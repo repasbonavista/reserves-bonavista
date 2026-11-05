@@ -20,6 +20,50 @@ type Availability = {
   available_quantity: number
 }
 
+type PostgrestError = {
+  code?: string
+  message?: string
+  details?: string | null
+  hint?: string | null
+}
+
+function safePostgrestDiagnostic(error: PostgrestError, teacherName = '') {
+  const redact = (value: unknown) => {
+    if (typeof value !== 'string') return undefined
+    let safe = value
+    if (teacherName) safe = safe.split(teacherName).join('[docent ocult]')
+    return safe
+      .replace(/\bBearer\s+\S+/gi, 'Bearer [ocult]')
+      .replace(/\beyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\b/g, '[token ocult]')
+      .replace(/\b[0-9a-f]{8}-[0-9a-f-]{27,}\b/gi, '[identificador ocult]')
+      .replace(/\b[A-Za-z0-9_-]{32,}\b/g, '[token ocult]')
+  }
+  return {
+    code: redact(error.code),
+    message: redact(error.message),
+    details: redact(error.details),
+    hint: redact(error.hint),
+  }
+}
+
+function logPostgrestError(operation: string, error: PostgrestError, teacherName = '') {
+  console.error(`[Supabase] ${operation}`, safePostgrestDiagnostic(error, teacherName))
+}
+
+function errorCode(error: PostgrestError | null) {
+  return error?.code && /^[A-Z0-9]+$/.test(error.code) ? error.code : ''
+}
+
+function formatPostgrestDiagnostic(error: PostgrestError, teacherName = '') {
+  const diagnostic = safePostgrestDiagnostic(error, teacherName)
+  return [
+    diagnostic.code && `Codi ${diagnostic.code}`,
+    diagnostic.message && `Missatge: ${diagnostic.message}`,
+    diagnostic.details && `Detalls: ${diagnostic.details}`,
+    diagnostic.hint && `Ajuda: ${diagnostic.hint}`,
+  ].filter(Boolean).join(' · ')
+}
+
 type SavedReservation = {
   groupId: string
   token: string
@@ -139,6 +183,7 @@ function App() {
   const [visibleMonth, setVisibleMonth] = useState(() => new Date(new Date().getFullYear(), new Date().getMonth(), 1))
   const [availability, setAvailability] = useState<Availability[]>([])
   const [availabilityRevision, setAvailabilityRevision] = useState(0)
+  const [schoolDataRevision, setSchoolDataRevision] = useState(0)
   const [savedReservations, setSavedReservations] = useState<SavedReservation[]>(readSavedReservations)
   const [openReservationId, setOpenReservationId] = useState('')
   const [reservationToCancel, setReservationToCancel] = useState<SavedReservation | null>(null)
@@ -180,47 +225,57 @@ function App() {
 
     let isCurrent = true
     async function loadSchoolData() {
-      const [categoriesResult, resourcesResult, sessionsResult] = await Promise.all([
-        supabase!.from('resource_categories').select('id,name,sort_order').eq('is_active', true).order('sort_order'),
-        supabase!.from('resources').select('id,name,capacity,category_id').eq('is_active', true).order('name'),
-        supabase!.from('school_sessions').select('id,session_number,label').eq('is_active', true).order('session_number'),
-      ])
+      try {
+        const [categoriesResult, resourcesResult, sessionsResult] = await Promise.all([
+          supabase!.from('resource_categories').select('id,name,sort_order').eq('is_active', true).order('sort_order'),
+          supabase!.from('resources').select('id,name,capacity,category_id').eq('is_active', true).order('name'),
+          supabase!.from('school_sessions').select('id,session_number,label').eq('is_active', true).order('session_number'),
+        ])
 
-      if (!isCurrent) return
-      if (categoriesResult.error || resourcesResult.error || sessionsResult.error) {
-        setLoadError('No s’han pogut carregar els recursos. Revisa la configuració d’accés.')
-        setIsLoading(false)
-        return
+        if (!isCurrent) return
+        const failures = [categoriesResult.error, resourcesResult.error, sessionsResult.error].filter(Boolean)
+        if (failures.length) {
+          failures.forEach((error) => logPostgrestError('loadSchoolData', error!))
+          const code = errorCode(failures[0])
+          setLoadError(`No s’han pogut carregar els recursos. Revisa la connexió i torna-ho a provar.${code ? ` Codi: ${code}.` : ''}`)
+          return
+        }
+
+        const categories = categoriesResult.data ?? []
+        const categoryNames = new Map(categories.map((item) => [item.id, item.name]))
+        const categoryOrder = new Map(categories.map((item) => [item.id, item.sort_order]))
+        const orderedResourceRows = [...(resourcesResult.data ?? [])].sort((left, right) =>
+          (categoryOrder.get(left.category_id) ?? 0) - (categoryOrder.get(right.category_id) ?? 0)
+          || left.name.localeCompare(right.name),
+        )
+        const loadedResources = orderedResourceRows.map((item) => ({
+          id: item.id,
+          name: categoryNames.get(item.category_id) ?? item.name,
+          capacity: item.capacity,
+        }))
+
+        setResources(loadedResources)
+        setSelectedResourceId((current) => current || loadedResources[0]?.id || '')
+        setSessions((sessionsResult.data ?? []).map((item) => ({
+          id: item.id,
+          number: item.session_number,
+          label: item.label,
+        })))
+        setLoadError('')
+      } catch (error) {
+        if (!isCurrent) return
+        logPostgrestError('loadSchoolData', error as PostgrestError)
+        setLoadError('No s’han pogut carregar els recursos per un problema de connexió. Torna-ho a provar.')
+      } finally {
+        if (isCurrent) setIsLoading(false)
       }
-
-      const categories = categoriesResult.data ?? []
-      const categoryNames = new Map(categories.map((item) => [item.id, item.name]))
-      const categoryOrder = new Map(categories.map((item) => [item.id, item.sort_order]))
-      const orderedResourceRows = [...(resourcesResult.data ?? [])].sort((left, right) =>
-        (categoryOrder.get(left.category_id) ?? 0) - (categoryOrder.get(right.category_id) ?? 0)
-        || left.name.localeCompare(right.name),
-      )
-      const loadedResources = orderedResourceRows.map((item) => ({
-        id: item.id,
-        name: categoryNames.get(item.category_id) ?? item.name,
-        capacity: item.capacity,
-      }))
-
-      setResources(loadedResources)
-      setSelectedResourceId((current) => current || loadedResources[0]?.id || '')
-      setSessions((sessionsResult.data ?? []).map((item) => ({
-        id: item.id,
-        number: item.session_number,
-        label: item.label,
-      })))
-      setIsLoading(false)
     }
 
     void loadSchoolData()
     return () => {
       isCurrent = false
     }
-  }, [])
+  }, [schoolDataRevision])
 
   useEffect(() => {
     if (!supabase || !resource || availabilityDates.length === 0) {
@@ -235,15 +290,24 @@ function App() {
     setIsLoadingAvailability(true)
 
     async function loadAvailability() {
-      const { data, error } = await supabase!.rpc('get_reservation_availability', {
-        p_resource_id: resource!.id,
-        p_booking_dates: availabilityDates,
-      })
+      try {
+        const { data, error } = await supabase!.rpc('get_reservation_availability', {
+          p_resource_id: resource!.id,
+          p_booking_dates: availabilityDates,
+        })
 
-      if (!isCurrent) return
-      setAvailabilityError(Boolean(error))
-      setAvailability(error ? [] : (data ?? []) as Availability[])
-      setIsLoadingAvailability(false)
+        if (!isCurrent) return
+        if (error) logPostgrestError('loadAvailability', error)
+        setAvailabilityError(Boolean(error))
+        setAvailability(error ? [] : (data ?? []) as Availability[])
+      } catch (error) {
+        if (!isCurrent) return
+        logPostgrestError('loadAvailability', error as PostgrestError)
+        setAvailability([])
+        setAvailabilityError(true)
+      } finally {
+        if (isCurrent) setIsLoadingAvailability(false)
+      }
     }
 
     void loadAvailability()
@@ -333,7 +397,7 @@ function App() {
 
     setIsSubmitting(true)
     let data: any
-    let error: { message: string } | null = null
+    let error: PostgrestError | null = null
     try {
       const result = await supabase.rpc('create_reservation_group', {
         p_teacher_name: teacher.trim(),
@@ -344,7 +408,8 @@ function App() {
       })
       data = result.data
       error = result.error
-    } catch {
+    } catch (caught) {
+      logPostgrestError('createReservationGroup', caught as PostgrestError, teacher.trim())
       setMessage('No s’ha pogut crear la reserva per un problema de connexió. Torna-ho a provar.')
       return
     } finally {
@@ -352,11 +417,14 @@ function App() {
     }
 
     if (error) {
-      setMessage(error.message.includes('remaining availability')
-        ? 'Ja no hi ha prou unitats lliures en una de les dates triades. Revisa la disponibilitat.'
-        : error.message.includes('non-lective')
-          ? 'Hi ha una data no lectiva en la selecció. Revisa el calendari escolar.'
-          : 'No s’ha pogut crear la reserva. Torna-ho a provar d’ací a un moment.')
+      logPostgrestError('createReservationGroup', error, teacher.trim())
+      const code = errorCode(error)
+      const diagnostic = formatPostgrestDiagnostic(error, teacher.trim())
+      setMessage(error.message?.includes('remaining availability')
+        ? `Ja no hi ha prou unitats lliures en una de les dates triades. Revisa la disponibilitat.${diagnostic ? ` ${diagnostic}` : ''}`
+        : error.message?.includes('non-lective')
+          ? `Hi ha una data no lectiva en la selecció. Revisa el calendari escolar.${diagnostic ? ` ${diagnostic}` : ''}`
+          : `No s’ha pogut crear la reserva. Torna-ho a provar d’ací a un moment.${diagnostic ? ` ${diagnostic}` : code ? ` Codi: ${code}.` : ''}`)
       return
     }
 
@@ -573,6 +641,7 @@ function App() {
         {(isLoading || loadError) && (
           <div className={`notice${loadError ? ' error' : ''}`} role={loadError ? 'alert' : 'status'}>
             {loadError || 'Carregant els recursos del centre…'}
+            {loadError && <button type="button" className="text-button" onClick={() => { setLoadError(''); setIsLoading(true); setSchoolDataRevision((revision) => revision + 1) }}>Torna-ho a provar</button>}
           </div>
         )}
         {activeTab === 'calendar' && renderMessage()}
@@ -623,7 +692,7 @@ function App() {
                   <span><i className="legend-reserved" />Reservada</span>
                   <span><i className="legend-closed" />No lectiu</span>
                 </div>
-                {availabilityError && <p className="inline-note">No s’ha pogut consultar la disponibilitat ara mateix.</p>}
+                {availabilityError && <p className="inline-note">No s’ha pogut consultar la disponibilitat ara mateix. <button type="button" className="text-button" onClick={() => setAvailabilityRevision((revision) => revision + 1)}>Torna-ho a provar</button></p>}
                 <div id="meues-reserves" className="saved-section">
                   <div className="section-heading"><h2>Les meues reserves</h2><span>{savedReservations.length}</span></div>
                   {savedReservations.length === 0 ? (
@@ -656,7 +725,7 @@ function App() {
                   setCalendarScreen('detail')
                 })}
                 <p className="inline-note">Toca una sessió lliure per revisar les dades i confirmar la reserva.</p>
-                {availabilityError && <p className="inline-note">No s’ha pogut consultar la disponibilitat ara mateix.</p>}
+                {availabilityError && <p className="inline-note">No s’ha pogut consultar la disponibilitat ara mateix. <button type="button" className="text-button" onClick={() => setAvailabilityRevision((revision) => revision + 1)}>Torna-ho a provar</button></p>}
               </>
             )}
 
