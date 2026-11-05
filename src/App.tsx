@@ -424,10 +424,11 @@ function App() {
 
   function renderResourceField() {
     return (
-      <label className="field-label field-stack" htmlFor="resource-choice">
+      <label className="field-label field-stack resource-choice-field" htmlFor="resource-choice">
         <span>Espai o recurs</span>
         <select
           id="resource-choice"
+          className="resource-select"
           value={selectedResourceId}
           onChange={(event) => {
             setSelectedResourceId(event.target.value)
@@ -633,7 +634,11 @@ function App() {
             {calendarScreen === 'sessions' && (
               <>
                 <button className="back-link" type="button" onClick={() => setCalendarScreen('calendar')}>‹ <span>Tornar al calendari</span></button>
-                <div className="screen-heading"><span className="heading-icon">▦</span><div><p>{resource?.name ?? 'Recurs'}</p><h1>Sessions del dia</h1></div></div>
+                <div className="screen-heading"><span className="heading-icon">▦</span><div><p>DISPONIBILITAT DEL DIA</p><h1>Sessions del dia</h1></div></div>
+                <div className="selected-resource-banner">
+                  <span>Espai o material</span>
+                  <strong>{resource?.name ?? 'Tria un recurs'}</strong>
+                </div>
                 <h2 className="selected-date-heading">{formatDate(bookingDate)}</h2>
                 {renderSessionRows([bookingDate], (item) => {
                   setSelectedSessionId(item.id)
@@ -649,7 +654,10 @@ function App() {
                 <button className="back-link" type="button" onClick={() => setCalendarScreen('sessions')}>‹ <span>Tornar a les sessions</span></button>
                 <div className="screen-heading"><span className="heading-icon">▢</span><div><p>DETALL DE LA RESERVA</p><h1>Confirma les dades</h1></div></div>
                 <div className="reservation-summary">
-                  <strong>{resource?.name}</strong>
+                  <div className="reservation-resource-highlight">
+                    <span>Espai o material seleccionat</span>
+                    <strong>{resource?.name ?? 'Tria un recurs'}</strong>
+                  </div>
                   <span>▦ &nbsp;{formatDate(bookingDate)}</span>
                   <span>◷ &nbsp;{selectedSession ? `${selectedSession.number}a sessió` : ''}</span>
                 </div>
@@ -667,7 +675,10 @@ function App() {
                 <button className="back-link" type="button" onClick={() => setCalendarScreen('calendar')}>‹ <span>Les meues reserves</span></button>
                 <div className="screen-heading"><span className="heading-icon">▢</span><div><p>DETALL DE LA RESERVA</p><h1>La teua reserva</h1></div></div>
                 <div className="reservation-summary">
-                  <strong>{openReservation.resourceName}</strong>
+                  <div className="reservation-resource-highlight">
+                    <span>Espai o material reservat</span>
+                    <strong>{openReservation.resourceName}</strong>
+                  </div>
                   {openReservation.dates.map((date) => <span key={date}>▦ &nbsp;{formatDate(date)}</span>)}
                   <span>◷ &nbsp;{openReservation.sessionLabel} sessió</span>
                   {openReservation.teacherName && <span>♙ &nbsp;{openReservation.teacherName}</span>}

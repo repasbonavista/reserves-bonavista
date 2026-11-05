@@ -303,6 +303,26 @@
   background-size: 1rem;
 }
 
+.resource-choice-field > span {
+  color: var(--green-dark);
+  font-size: 0.9rem;
+  font-weight: 850;
+  letter-spacing: 0.025em;
+  text-transform: uppercase;
+}
+
+.field-stack select.resource-select {
+  min-height: 3.4rem;
+  padding-left: 0.85rem;
+  border: 2px solid #9acb78;
+  border-radius: 0.82rem;
+  color: #205f16;
+  background-color: #f3faed;
+  font-size: 1.08rem;
+  font-weight: 850;
+  text-transform: uppercase;
+}
+
 .field-stack input:focus,
 .field-stack select:focus {
   border-color: var(--green);
@@ -609,6 +629,34 @@
   font-weight: 700;
 }
 
+.selected-resource-banner {
+  display: grid;
+  gap: 0.28rem;
+  margin: 0 0 0.8rem;
+  padding: 0.7rem 0.8rem;
+  border: 1px solid #a8d18c;
+  border-left: 5px solid var(--green);
+  border-radius: 0.78rem;
+  background: linear-gradient(120deg, #f0f8e8, #fbfdf8);
+}
+
+.selected-resource-banner span,
+.reservation-resource-highlight span {
+  color: #54764b;
+  font-size: 0.66rem;
+  font-weight: 850;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.selected-resource-banner strong {
+  color: var(--green-dark);
+  font-size: 1.14rem;
+  font-weight: 850;
+  line-height: 1.15;
+  text-transform: uppercase;
+}
+
 .session-row.reserved {
   border-color: #f2d4d1;
   background: #fff0ef;
@@ -644,10 +692,21 @@
   background: #fff;
 }
 
-.reservation-summary strong {
-  padding-bottom: 0.65rem;
-  border-bottom: 1px solid #e7eae6;
-  font-size: 1.08rem;
+.reservation-resource-highlight {
+  display: grid;
+  gap: 0.3rem;
+  padding: 0.8rem;
+  border: 1.5px solid #a4cf86;
+  border-radius: 0.78rem;
+  background: linear-gradient(120deg, #edf7e5, #f8fbf4);
+}
+
+.reservation-resource-highlight strong {
+  color: var(--green-dark);
+  font-size: clamp(1.15rem, 5vw, 1.4rem);
+  font-weight: 900;
+  line-height: 1.15;
+  text-transform: uppercase;
 }
 
 .reservation-summary span {
