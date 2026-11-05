@@ -518,7 +518,10 @@ function App() {
       <header className="topbar">
         <a className="brand" href="#inici" aria-label="Reserves CEIP Bonavista, inici" onClick={() => openTab('calendar')}>
           <img className="brand-logo" src={schoolLogo} alt="CEIP Bonavista d’Alaquàs" />
-          <span className="brand-purpose">Reserves<br /><strong>del centre</strong></span>
+          <span className="brand-school">
+            <span>Generalitat Valenciana</span>
+            <strong>CEIP BONAVISTA</strong>
+          </span>
         </a>
         <div className="topbar-actions">
           <button
