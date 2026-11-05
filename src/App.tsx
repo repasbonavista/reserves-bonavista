@@ -88,7 +88,7 @@ type AppTab = 'calendar' | 'quick' | 'blocks'
 type CalendarScreen = 'calendar' | 'sessions' | 'detail' | 'reservation-detail'
 
 const savedReservationsKey = 'reserves-bonavista-reservations'
-const schoolLogo = '/reserves-bonavista/ceip-bonavista-logo.jpg'
+const schoolLogo = '/reserves-bonavista/ceip-bonavista-logo-transparent.png'
 const firstSchoolDay = '2026-09-07'
 const lastSchoolDay = '2027-06-18'
 
