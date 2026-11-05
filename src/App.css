@@ -565,6 +565,11 @@
   background: #fbfdf9;
   text-align: left;
   cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.saved-item:active {
+  background: #f1f8eb;
 }
 
 .saved-item > span:first-child {
@@ -579,6 +584,30 @@
 .saved-item small {
   color: var(--muted);
   font-size: 0.73rem;
+  line-height: 1.35;
+}
+
+.text-button {
+  min-height: 2.3rem;
+  padding: 0.25rem 0.45rem;
+  border: 0;
+  border-radius: 0.45rem;
+  color: var(--green-dark);
+  background: transparent;
+  font-size: 0.8rem;
+  font-weight: 800;
+  text-decoration: underline;
+  text-underline-offset: 0.12em;
+  cursor: pointer;
+}
+
+.text-button:disabled {
+  color: var(--muted);
+  cursor: wait;
+}
+
+.refresh-reservations {
+  margin: 0 0 0.45rem;
 }
 
 .back-link {
@@ -687,6 +716,15 @@
 .session-row:disabled {
   cursor: not-allowed;
   opacity: 1;
+}
+
+.session-row.manageable {
+  border-width: 2px;
+  cursor: pointer;
+}
+
+.session-row.manageable:active {
+  background: #ffe7e5;
 }
 
 .row-chevron {
@@ -819,14 +857,45 @@
 
 .confirm-dialog {
   width: min(100%, 24rem);
+  max-height: 90vh;
   display: grid;
   justify-items: center;
   gap: 0.75rem;
   padding: 1.4rem 1.15rem 1.15rem;
+  overflow-y: auto;
   border-radius: 1.15rem;
   background: #fff;
   box-shadow: 0 20px 60px rgb(0 0 0 / 22%);
   text-align: center;
+}
+
+.cancel-reservation-details {
+  width: 100%;
+  max-height: 34vh;
+  display: grid;
+  gap: 0.4rem;
+  overflow-y: auto;
+  padding: 0.75rem;
+  border: 1px solid #f0c6c3;
+  border-radius: 0.75rem;
+  color: #292e2a;
+  background: #fff8f7;
+  font-size: 0.82rem;
+  line-height: 1.35;
+  text-align: left;
+}
+
+.cancel-reservation-details > strong {
+  color: var(--green-dark);
+  font-size: 0.95rem;
+  text-transform: uppercase;
+}
+
+.cancel-reservation-details ul {
+  display: grid;
+  gap: 0.18rem;
+  margin: 0;
+  padding-left: 1.25rem;
 }
 
 .trash-icon {
@@ -859,6 +928,12 @@
   border: 1px solid #cb1515;
   color: #fff;
   background: #d91616;
+}
+
+.confirm-danger:disabled,
+.secondary-button:disabled {
+  opacity: 0.7;
+  cursor: wait;
 }
 
 @media (min-width: 760px) {

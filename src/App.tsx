@@ -66,12 +66,22 @@ function formatPostgrestDiagnostic(error: PostgrestError, teacherName = '') {
 
 type SavedReservation = {
   groupId: string
-  token: string
   resourceName: string
   sessionLabel: string
   dates: string[]
   quantity: number
   teacherName?: string
+}
+
+type PublicReservation = {
+  groupId: string
+  referenceCode: string
+  teacherName: string
+  resourceName: string
+  sessionLabel: string
+  sessionNumber: number
+  dates: string[]
+  quantity: number
 }
 
 type AppTab = 'calendar' | 'quick' | 'blocks'
@@ -162,7 +172,18 @@ function readSavedReservations(): SavedReservation[] {
   try {
     const value = localStorage.getItem(savedReservationsKey)
     const parsed: unknown = value ? JSON.parse(value) : []
-    return Array.isArray(parsed) ? parsed as SavedReservation[] : []
+    if (!Array.isArray(parsed)) return []
+    return parsed
+      .filter((item): item is Record<string, unknown> => typeof item === 'object' && item !== null)
+      .filter((item) => typeof item.groupId === 'string')
+      .map((item) => ({
+        groupId: item.groupId as string,
+        resourceName: typeof item.resourceName === 'string' ? item.resourceName : '',
+        sessionLabel: typeof item.sessionLabel === 'string' ? item.sessionLabel : '',
+        dates: Array.isArray(item.dates) ? item.dates.filter((date): date is string => typeof date === 'string') : [],
+        quantity: typeof item.quantity === 'number' ? item.quantity : 1,
+        teacherName: typeof item.teacherName === 'string' ? item.teacherName : undefined,
+      }))
   } catch {
     return []
   }
@@ -185,10 +206,16 @@ function App() {
   const [availabilityRevision, setAvailabilityRevision] = useState(0)
   const [schoolDataRevision, setSchoolDataRevision] = useState(0)
   const [savedReservations, setSavedReservations] = useState<SavedReservation[]>(readSavedReservations)
+  const [publicReservations, setPublicReservations] = useState<PublicReservation[]>([])
+  const [publicReservationsRevision, setPublicReservationsRevision] = useState(0)
+  const [isLoadingReservations, setIsLoadingReservations] = useState(true)
+  const [reservationsError, setReservationsError] = useState(false)
   const [openReservationId, setOpenReservationId] = useState('')
-  const [reservationToCancel, setReservationToCancel] = useState<SavedReservation | null>(null)
+  const [reservationReturnScreen, setReservationReturnScreen] = useState<'calendar' | 'sessions'>('calendar')
+  const [reservationToCancel, setReservationToCancel] = useState<PublicReservation | null>(null)
   const [isLoading, setIsLoading] = useState(true)
   const [isLoadingAvailability, setIsLoadingAvailability] = useState(false)
+  const [isCancelling, setIsCancelling] = useState(false)
   const [availabilityError, setAvailabilityError] = useState(false)
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [loadError, setLoadError] = useState('')
@@ -197,7 +224,8 @@ function App() {
 
   const resource = resources.find((item) => item.id === selectedResourceId)
   const selectedSession = sessions.find((item) => item.id === selectedSessionId)
-  const openReservation = savedReservations.find((item) => item.groupId === openReservationId)
+  const openReservation = publicReservations.find((item) => item.groupId === openReservationId)
+  const localReservation = savedReservations.find((item) => item.groupId === openReservationId)
   const repeatWeekly = activeTab === 'blocks'
   const bookingDates = useMemo(
     () => makeBookingDates(bookingDate, repeatUntil, repeatWeekly),
@@ -215,6 +243,12 @@ function App() {
     return calendarDates
   }, [activeTab, bookingDate, bookingDates, calendarDates])
   const calendarCells = useMemo(() => getCalendarCells(visibleMonth), [visibleMonth])
+
+  useEffect(() => {
+    if (activeTab === 'calendar' && calendarScreen === 'reservation-detail') {
+      document.querySelector('.screen-card')?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+    }
+  }, [activeTab, calendarScreen, openReservationId])
 
   useEffect(() => {
     if (!supabase) {
@@ -276,6 +310,66 @@ function App() {
       isCurrent = false
     }
   }, [schoolDataRevision])
+
+  useEffect(() => {
+    if (!supabase) {
+      setIsLoadingReservations(false)
+      return
+    }
+
+    let isCurrent = true
+    async function loadPublicReservations() {
+      setIsLoadingReservations(true)
+      try {
+        const { data, error } = await supabase!.rpc('get_public_active_reservations')
+        if (!isCurrent) return
+        if (error) {
+          logPostgrestError('loadPublicReservations', error)
+          setReservationsError(true)
+          return
+        }
+
+        setPublicReservations(((data ?? []) as Array<{
+          group_id: string
+          reference_code: string
+          teacher_name: string
+          resource_name: string
+          session_label: string
+          session_number: number
+          booking_dates: string[]
+          quantity: number
+        }>).map((item) => ({
+          groupId: item.group_id,
+          referenceCode: item.reference_code,
+          teacherName: item.teacher_name,
+          resourceName: item.resource_name,
+          sessionLabel: item.session_label,
+          sessionNumber: item.session_number,
+          dates: item.booking_dates,
+          quantity: item.quantity,
+        })))
+        setReservationsError(false)
+      } catch (error) {
+        if (!isCurrent) return
+        logPostgrestError('loadPublicReservations', error as PostgrestError)
+        setReservationsError(true)
+      } finally {
+        if (isCurrent) setIsLoadingReservations(false)
+      }
+    }
+
+    void loadPublicReservations()
+    const refreshWhenVisible = () => {
+      if (document.visibilityState === 'visible') void loadPublicReservations()
+    }
+    window.addEventListener('focus', refreshWhenVisible)
+    document.addEventListener('visibilitychange', refreshWhenVisible)
+    return () => {
+      isCurrent = false
+      window.removeEventListener('focus', refreshWhenVisible)
+      document.removeEventListener('visibilitychange', refreshWhenVisible)
+    }
+  }, [publicReservationsRevision])
 
   useEffect(() => {
     if (!supabase || !resource || availabilityDates.length === 0) {
@@ -358,6 +452,14 @@ function App() {
     setMenuOpen(false)
   }
 
+  function openReservationDetails(reservation: PublicReservation, returnScreen: 'calendar' | 'sessions') {
+    setOpenReservationId(reservation.groupId)
+    setReservationReturnScreen(returnScreen)
+    setActiveTab('calendar')
+    setCalendarScreen('reservation-detail')
+    setMessage('')
+  }
+
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
     setMessage('')
@@ -429,14 +531,13 @@ function App() {
     }
 
     const created = Array.isArray(data) ? data[0] : data
-    if (!created?.group_id || !created?.cancellation_token) {
+    if (!created?.group_id) {
       setMessage('La reserva no s’ha pogut confirmar. Torna-ho a provar.')
       return
     }
 
     const nextReservations: SavedReservation[] = [{
       groupId: created.group_id,
-      token: created.cancellation_token,
       resourceName: resource.name,
       sessionLabel: selectedSession.label,
       dates,
@@ -450,36 +551,49 @@ function App() {
       // La confirmació continua visible encara que el navegador no puga guardar-la.
     }
 
-    setMessage('Reserva confirmada. La podràs consultar o cancel·lar des d’aquest navegador.')
+    setMessage('Reserva confirmada. Ara apareix a les reserves actives del centre, també en altres dispositius.')
     setAvailabilityRevision((revision) => revision + 1)
+    setPublicReservationsRevision((revision) => revision + 1)
     setActiveTab('calendar')
     setCalendarScreen('sessions')
   }
 
-  async function cancelReservation(reservation: SavedReservation) {
+  async function cancelReservation(reservation: PublicReservation) {
     if (!supabase) return
-    const { data, error } = await supabase.rpc('cancel_reservation_group', {
-      p_group_id: reservation.groupId,
-      p_cancellation_token: reservation.token,
-    })
-
-    if (error || data !== true) {
-      setMessage('No s’ha pogut cancel·lar la reserva. Torna-ho a provar.')
-      setReservationToCancel(null)
-      return
-    }
-
-    const remaining = savedReservations.filter((item) => item.groupId !== reservation.groupId)
-    setSavedReservations(remaining)
     try {
-      localStorage.setItem(savedReservationsKey, JSON.stringify(remaining))
-    } catch {
-      // La pantalla actual es manté actualitzada encara que el navegador no puga guardar-la.
+      setIsCancelling(true)
+      const { data, error } = await supabase.rpc('cancel_reservation_group_public', {
+        p_group_id: reservation.groupId,
+      })
+
+      if (error || data !== true) {
+        if (error) logPostgrestError('cancelReservationGroupPublic', error)
+        setMessage('No s’ha pogut anul·lar la reserva. Pot ser que ja s’haja anul·lat; actualitza la llista i torna-ho a comprovar.')
+        setReservationToCancel(null)
+        setPublicReservationsRevision((revision) => revision + 1)
+        return
+      }
+
+      setPublicReservations((current) => current.filter((item) => item.groupId !== reservation.groupId))
+      const remaining = savedReservations.filter((item) => item.groupId !== reservation.groupId)
+      setSavedReservations(remaining)
+      try {
+        localStorage.setItem(savedReservationsKey, JSON.stringify(remaining))
+      } catch {
+        // La pantalla actual es manté actualitzada encara que el navegador no puga guardar-la.
+      }
+      setMessage('La reserva s’ha anul·lat.')
+      setReservationToCancel(null)
+      setCalendarScreen(reservationReturnScreen)
+      setAvailabilityRevision((revision) => revision + 1)
+      setPublicReservationsRevision((revision) => revision + 1)
+    } catch (error) {
+      logPostgrestError('cancelReservationGroupPublic', error as PostgrestError)
+      setMessage('No s’ha pogut anul·lar la reserva per un problema de connexió. Torna-ho a provar.')
+      setReservationToCancel(null)
+    } finally {
+      setIsCancelling(false)
     }
-    setMessage('La reserva s’ha cancel·lat.')
-    setReservationToCancel(null)
-    setCalendarScreen('calendar')
-    setAvailabilityRevision((revision) => revision + 1)
   }
 
   function modifyReservation(reservation: SavedReservation) {
@@ -530,24 +644,33 @@ function App() {
         {sessions.map((item) => {
           const available = availableForSession(item.id, dates)
           const unavailable = available !== null && available < 1
+          const matchingReservations = unavailable && resource
+            ? publicReservations.filter((reservation) =>
+                reservation.resourceName === resource.name
+                && reservation.sessionLabel === item.label
+                && reservation.dates.some((date) => dates.includes(date)))
+            : []
+          const reservationToOpen = matchingReservations.length === 1 ? matchingReservations[0] : undefined
           const selected = selectedSessionId === item.id
           const status = isLoadingAvailability ? 'Comprovant…'
-            : unavailable ? 'Reservada'
+            : unavailable ? reservationToOpen ? `Reservada · ${reservationToOpen.teacherName}` : 'Reservada'
               : available === null ? '—'
                 : resource && resource.capacity > 1 ? `${available} lliures` : 'Lliure'
 
           return (
             <button
-              className={`session-row${unavailable ? ' reserved' : ' free'}${selected ? ' selected' : ''}`}
+              className={`session-row${unavailable ? ' reserved' : ' free'}${reservationToOpen ? ' manageable' : ''}${selected ? ' selected' : ''}`}
               key={item.id}
               type="button"
-              aria-label={`${item.number}a sessió, ${status}`}
-              disabled={unavailable || dates.length === 0}
-              onClick={() => selectSession(item)}
+              aria-label={`${item.number}a sessió, ${status}${reservationToOpen ? ', toca per a revisar o anul·lar la reserva' : ''}`}
+              disabled={(unavailable && !reservationToOpen) || dates.length === 0}
+              onClick={() => reservationToOpen
+                ? openReservationDetails(reservationToOpen, 'sessions')
+                : selectSession(item)}
             >
               <strong>{item.number}a sessió</strong>
               <span className="session-status">{status}</span>
-              <span className="row-chevron" aria-hidden="true">›</span>
+              <span className="row-chevron" aria-hidden="true">{unavailable && !reservationToOpen ? '' : '›'}</span>
             </button>
           )
         })}
@@ -620,7 +743,7 @@ function App() {
             <button type="button" onClick={() => { openTab('calendar'); setCalendarScreen('calendar') }}>Calendari</button>
             <button type="button" onClick={() => openTab('quick')}>Reserva ràpida</button>
             <button type="button" onClick={() => openTab('blocks')}>Reserva per blocs</button>
-            <a href="#meues-reserves" onClick={() => setMenuOpen(false)}>Les meues reserves</a>
+                        <a href="#reserves-actives" onClick={() => openTab('calendar')}>Reserves actives</a>
           </div>
         )}
       </header>
@@ -693,15 +816,35 @@ function App() {
                   <span><i className="legend-closed" />No lectiu</span>
                 </div>
                 {availabilityError && <p className="inline-note">No s’ha pogut consultar la disponibilitat ara mateix. <button type="button" className="text-button" onClick={() => setAvailabilityRevision((revision) => revision + 1)}>Torna-ho a provar</button></p>}
-                <div id="meues-reserves" className="saved-section">
-                  <div className="section-heading"><h2>Les meues reserves</h2><span>{savedReservations.length}</span></div>
-                  {savedReservations.length === 0 ? (
-                    <p className="empty-note">Ací apareixeran les reserves creades des d’aquest navegador.</p>
+                <div id="reserves-actives" className="saved-section">
+                  <div className="section-heading">
+                    <h2>Reserves actives</h2>
+                    <span>{publicReservations.length}</span>
+                  </div>
+                  <p className="inline-note">Les reserves actives i el nom del docent són visibles per a qualsevol persona amb aquest enllaç. Qualsevol pot demanar-ne l’anul·lació després de revisar les dades.</p>
+                  <button
+                    className="text-button refresh-reservations"
+                    type="button"
+                    onClick={() => setPublicReservationsRevision((revision) => revision + 1)}
+                    disabled={isLoadingReservations}
+                  >
+                    {isLoadingReservations ? 'Actualitzant…' : 'Actualitzar reserves'}
+                  </button>
+                  {reservationsError ? (
+                    <p className="inline-note" role="alert">No s’han pogut carregar les reserves. Comprova que la gestió compartida estiga activada a Supabase i torna-ho a provar.</p>
+                  ) : isLoadingReservations && publicReservations.length === 0 ? (
+                    <p className="empty-note" role="status">Carregant les reserves actives…</p>
+                  ) : publicReservations.length === 0 ? (
+                    <p className="empty-note">No hi ha reserves actives pròximes.</p>
                   ) : (
                     <div className="saved-list">
-                      {savedReservations.map((item) => (
-                        <button className="saved-item" type="button" key={item.groupId} onClick={() => { setOpenReservationId(item.groupId); setCalendarScreen('reservation-detail') }}>
-                          <span><strong>{item.resourceName}</strong><small>{formatShortDate(item.dates[0])} · {item.sessionLabel} sessió</small></span>
+                      {publicReservations.map((item) => (
+                        <button className="saved-item" type="button" key={item.groupId} onClick={() => openReservationDetails(item, 'calendar')}>
+                          <span>
+                            <strong>{item.resourceName}</strong>
+                            <small>{item.teacherName} · {formatShortDate(item.dates[0])} · {item.sessionNumber}a sessió · {item.quantity} {item.quantity === 1 ? 'unitat' : 'unitats'}</small>
+                            <small>Ref. {item.referenceCode}{item.dates.length > 1 ? ` · ${item.dates.length} dates` : ''}</small>
+                          </span>
                           <span className="row-chevron" aria-hidden="true">›</span>
                         </button>
                       ))}
@@ -724,7 +867,7 @@ function App() {
                   setSelectedSessionId(item.id)
                   setCalendarScreen('detail')
                 })}
-                <p className="inline-note">Toca una sessió lliure per revisar les dades i confirmar la reserva.</p>
+                <p className="inline-note">Toca una sessió lliure per a reservar. Per a revisar o anul·lar una reserva, consulta «Reserves actives».</p>
                 {availabilityError && <p className="inline-note">No s’ha pogut consultar la disponibilitat ara mateix. <button type="button" className="text-button" onClick={() => setAvailabilityRevision((revision) => revision + 1)}>Torna-ho a provar</button></p>}
               </>
             )}
@@ -754,22 +897,31 @@ function App() {
 
             {calendarScreen === 'reservation-detail' && openReservation && (
               <>
-                <button className="back-link" type="button" onClick={() => setCalendarScreen('calendar')}>‹ <span>Les meues reserves</span></button>
-                <div className="screen-heading"><span className="heading-icon">▢</span><div><p>DETALL DE LA RESERVA</p><h1>La teua reserva</h1></div></div>
+                <button className="back-link" type="button" onClick={() => setCalendarScreen(reservationReturnScreen)}>‹ <span>{reservationReturnScreen === 'sessions' ? 'Tornar a les sessions' : 'Reserves actives'}</span></button>
+                <div className="screen-heading"><span className="heading-icon">▢</span><div><p>DETALL DE LA RESERVA</p><h1>Reserva activa</h1></div></div>
                 <div className="reservation-summary">
                   <div className="reservation-resource-highlight">
                     <span>Espai o material reservat</span>
                     <strong>{openReservation.resourceName}</strong>
                   </div>
+                  <span>♙ &nbsp;Reservada per: {openReservation.teacherName}</span>
                   {openReservation.dates.map((date) => <span key={date}>▦ &nbsp;{formatDate(date)}</span>)}
-                  <span>◷ &nbsp;{openReservation.sessionLabel} sessió</span>
-                  {openReservation.teacherName && <span>♙ &nbsp;{openReservation.teacherName}</span>}
-                  {openReservation.quantity > 1 && <span>Quantitat &nbsp;{openReservation.quantity}</span>}
+                  <span>◷ &nbsp;{openReservation.sessionNumber}a sessió</span>
+                  <span>Quantitat &nbsp;{openReservation.quantity} {openReservation.quantity === 1 ? 'unitat' : 'unitats'}</span>
+                  <span>Referència &nbsp;{openReservation.referenceCode}</span>
                 </div>
                 <div className="detail-actions">
                   <button className="danger-outline" type="button" onClick={() => setReservationToCancel(openReservation)}>⌫ &nbsp;Anul·lar reserva</button>
-                  <button className="secondary-button" type="button" onClick={() => modifyReservation(openReservation)}>✎ &nbsp;Modificar</button>
+                  {localReservation && <button className="secondary-button" type="button" onClick={() => modifyReservation(localReservation)}>✎ &nbsp;Modificar</button>}
                 </div>
+              </>
+            )}
+
+            {calendarScreen === 'reservation-detail' && !openReservation && (
+              <>
+                <button className="back-link" type="button" onClick={() => setCalendarScreen(reservationReturnScreen)}>‹ <span>{reservationReturnScreen === 'sessions' ? 'Tornar a les sessions' : 'Reserves actives'}</span></button>
+                <p className="empty-note" role="status">Aquesta reserva ja no està activa o s’ha anul·lat des d’un altre dispositiu.</p>
+                <button className="text-button" type="button" onClick={() => setPublicReservationsRevision((revision) => revision + 1)}>Actualitzar reserves</button>
               </>
             )}
           </section>
@@ -819,10 +971,19 @@ function App() {
         <div className="modal-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) setReservationToCancel(null) }}>
           <section className="confirm-dialog" role="dialog" aria-modal="true" aria-labelledby="cancel-title">
             <span className="trash-icon" aria-hidden="true">⌫</span>
-            <h2 id="cancel-title">Segur que vols anul·lar aquesta reserva?</h2>
-            <p>La sessió tornarà a estar disponible per a la resta del professorat.</p>
-            <button className="confirm-danger" type="button" onClick={() => void cancelReservation(reservationToCancel)}>Sí, anul·lar</button>
-            <button className="secondary-button" type="button" onClick={() => setReservationToCancel(null)}>No, tornar</button>
+            <h2 id="cancel-title">Confirma l’anul·lació</h2>
+            <div className="cancel-reservation-details">
+              <strong>{reservationToCancel.resourceName}</strong>
+              <span>Reservada per: {reservationToCancel.teacherName}</span>
+              <span>{reservationToCancel.sessionNumber}a sessió · {reservationToCancel.quantity} {reservationToCancel.quantity === 1 ? 'unitat' : 'unitats'}</span>
+              <span>Referència {reservationToCancel.referenceCode}</span>
+              <ul>
+                {reservationToCancel.dates.map((date) => <li key={date}>{formatDate(date)}</li>)}
+              </ul>
+            </div>
+            <p>Si és una reserva per blocs, s’anul·laran totes les dates que apareixen ací.</p>
+            <button className="confirm-danger" type="button" disabled={isCancelling} onClick={() => void cancelReservation(reservationToCancel)}>{isCancelling ? 'Anul·lant…' : 'Sí, anul·lar aquestes dates'}</button>
+            <button className="secondary-button" type="button" disabled={isCancelling} onClick={() => setReservationToCancel(null)}>No, tornar</button>
           </section>
         </div>
       )}
