@@ -185,9 +185,9 @@ begin
     raise exception 'Session is unavailable';
   end if;
 
-  insert into public.reservation_groups (teacher_name)
+  insert into public.reservation_groups as rg (teacher_name)
   values (btrim(p_teacher_name))
-  returning id, cancellation_token
+  returning rg.id, rg.cancellation_token
     into new_group_id, new_cancellation_token;
 
   for requested_date in
