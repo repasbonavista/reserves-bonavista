@@ -137,6 +137,12 @@ function formatShortDate(value: string) {
     .format(new Date(`${value}T12:00:00`))
 }
 
+function isNonLectiveDate(date: string) {
+  const weekday = new Date(`${date}T12:00:00`).getDay()
+  return date < firstSchoolDay || date > lastSchoolDay
+    || weekday === 0 || weekday === 6 || nonLectiveDates.has(date)
+}
+
 function makeBookingDates(start: string, end: string, repeatWeekly: boolean) {
   if (!start) return []
   if (repeatWeekly && !end) return []
@@ -148,7 +154,8 @@ function makeBookingDates(start: string, end: string, repeatWeekly: boolean) {
   const current = new Date(`${start}T12:00:00`)
   const last = new Date(`${lastDate}T12:00:00`)
   while (current <= last && dates.length <= 60) {
-    dates.push(dateToInputValue(current))
+    const date = dateToInputValue(current)
+    if (!repeatWeekly || !isNonLectiveDate(date)) dates.push(date)
     current.setDate(current.getDate() + (repeatWeekly ? 7 : 1))
   }
   return dates
@@ -237,7 +244,7 @@ function App() {
     ).filter((date) => date >= today)
   }, [today, visibleMonth])
   const availabilityDates = useMemo(() => {
-    if (activeTab === 'blocks') return bookingDates.length ? bookingDates : (bookingDate ? [bookingDate] : [])
+    if (activeTab === 'blocks') return bookingDates
     if (activeTab === 'quick') return bookingDate ? [bookingDate] : []
     return calendarDates
   }, [activeTab, bookingDate, bookingDates, calendarDates])
@@ -415,12 +422,6 @@ function App() {
     const records = availability.filter((item) => item.session_id === sessionId && dateSet.has(item.booking_date))
     if (records.length !== dates.length) return null
     return Math.min(...records.map((item) => item.available_quantity))
-  }
-
-  function isNonLectiveDate(date: string) {
-    const weekday = new Date(`${date}T12:00:00`).getDay()
-    return date < firstSchoolDay || date > lastSchoolDay
-      || weekday === 0 || weekday === 6 || nonLectiveDates.has(date)
   }
 
   function dayStatus(date: string) {
@@ -949,11 +950,12 @@ function App() {
                     onChange={(event) => { setRepeatUntil(event.target.value); setSelectedSessionId(''); setMessage('') }}
                     required
                   />
-                  <small>Es repetiran les mateixes sessions cada setmana, fins a 60 dates.</small>
+                  <small>Es repetiran les mateixes sessions cada setmana, fins a 60 dates lectives. Els festius, les vacances i els dies fora del curs escolar s’ometran automàticament.</small>
                 </label>
               )}
               <div className="section-heading"><h2>{activeTab === 'blocks' ? 'Sessió per a cada data' : 'Sessions del dia'}</h2></div>
               {activeTab === 'blocks' && bookingDates.length > 0 && <p className="inline-note">Es crearan {bookingDates.length} reserves setmanals, sempre que hi haja disponibilitat.</p>}
+              {activeTab === 'blocks' && bookingDate && repeatUntil && bookingDates.length === 0 && <p className="inline-note" role="status">No hi ha dates lectives per a aquest dia de la setmana en el període seleccionat.</p>}
               {renderSessionRows(activeTab === 'blocks' ? bookingDates : [bookingDate], (item) => { setSelectedSessionId(item.id); setMessage('') })}
               {isLoadingAvailability && <p className="inline-note" role="status">Comprovant la disponibilitat; podràs confirmar quan acabe.</p>}
               {renderTeacherAndQuantity()}
