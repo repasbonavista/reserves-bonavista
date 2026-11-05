@@ -21,17 +21,18 @@
 }
 
 .topbar {
-  min-height: 102px;
+  min-height: 128px;
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 0.5rem;
-  padding: 0.25rem max(0.8rem, calc((100vw - 760px) / 2)) 0.55rem;
-  background: linear-gradient(180deg, #fff 0%, #f5faef 100%);
+  padding: 0.35rem max(0.8rem, calc((100vw - 760px) / 2)) 0.9rem;
+  background: linear-gradient(180deg, #fff 0%, #f6faef 42%, #e5f3d0 100%);
   position: relative;
   z-index: 5;
 }
 
+.topbar::before,
 .topbar::after {
   content: '';
   position: absolute;
@@ -39,9 +40,19 @@
   right: 0;
   bottom: 0;
   left: 0;
-  height: 15px;
-  background: linear-gradient(90deg, #d9f3ad 0%, #a6df5e 55%, #75c62d 100%);
-  clip-path: polygon(0 40%, 12% 72%, 26% 38%, 39% 69%, 54% 43%, 69% 72%, 84% 35%, 100% 12%, 100% 100%, 0 100%);
+  pointer-events: none;
+}
+
+.topbar::before {
+  height: 38px;
+  background: linear-gradient(100deg, #e0f5b8 0%, #c4eb8d 35%, #a9df65 68%, #8bd04e 100%);
+  clip-path: polygon(0 42%, 9% 56%, 19% 35%, 31% 67%, 43% 40%, 56% 63%, 69% 34%, 82% 57%, 93% 31%, 100% 38%, 100% 100%, 0 100%);
+}
+
+.topbar::after {
+  height: 22px;
+  background: linear-gradient(100deg, #b6e67d 0%, #91d44c 48%, #65b82d 100%);
+  clip-path: polygon(0 56%, 12% 72%, 25% 42%, 38% 73%, 53% 45%, 68% 70%, 82% 40%, 93% 27%, 100% 8%, 100% 100%, 0 100%);
   pointer-events: none;
 }
 
@@ -58,8 +69,8 @@
 
 .brand-logo {
   display: block;
-  width: clamp(104px, 29vw, 128px);
-  height: 88px;
+  width: clamp(120px, 32vw, 145px);
+  height: 104px;
   object-fit: contain;
   mix-blend-mode: multiply;
 }
@@ -73,13 +84,15 @@
 }
 
 .brand-school span {
-  font-size: 0.72rem;
-  font-weight: 600;
+  color: #24721a;
+  font-size: 0.76rem;
+  font-weight: 750;
 }
 
 .brand-school strong {
-  font-size: 0.88rem;
-  font-weight: 800;
+  font-size: 0.96rem;
+  font-weight: 900;
+  letter-spacing: 0.015em;
 }
 
 .topbar-actions {
@@ -850,12 +863,12 @@
 
 @media (min-width: 760px) {
   .topbar {
-    min-height: 108px;
+    min-height: 136px;
   }
 
   .brand-logo {
-    width: 140px;
-    height: 94px;
+    width: 154px;
+    height: 112px;
   }
 
   .screen-card {
@@ -873,13 +886,13 @@
 
 @media (max-width: 390px) {
   .topbar {
-    min-height: 94px;
-    padding: 0.1rem 0.55rem 0.5rem;
+    min-height: 118px;
+    padding: 0.15rem 0.55rem 0.78rem;
   }
 
   .brand-logo {
-    width: 100px;
-    height: 82px;
+    width: 108px;
+    height: 96px;
   }
 
   .brand {
@@ -887,11 +900,11 @@
   }
 
   .brand-school span {
-    font-size: 0.61rem;
+    font-size: 0.64rem;
   }
 
   .brand-school strong {
-    font-size: 0.77rem;
+    font-size: 0.82rem;
   }
 
   .menu-button {
