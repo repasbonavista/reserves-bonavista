@@ -91,66 +91,6 @@
   letter-spacing: 0.015em;
 }
 
-.topbar-actions {
-  position: absolute;
-  top: 0.75rem;
-  right: max(0.75rem, calc((100vw - 760px) / 2));
-  z-index: 2;
-}
-
-.menu-button {
-  width: 2.55rem;
-  height: 2.55rem;
-  border: 0;
-  border-radius: 0.55rem;
-  color: var(--green-dark);
-  background: transparent;
-  font-size: 1.55rem;
-  font-weight: 800;
-  cursor: pointer;
-}
-
-.menu-popover {
-  position: absolute;
-  top: calc(100% - 0.1rem);
-  right: max(0.7rem, calc((100vw - 760px) / 2));
-  width: min(15rem, calc(100vw - 1.4rem));
-  display: grid;
-  gap: 0.25rem;
-  padding: 0.85rem;
-  border: 1px solid var(--line);
-  border-radius: 1rem;
-  background: #fff;
-  box-shadow: 0 12px 32px rgb(20 55 23 / 15%);
-}
-
-.menu-popover strong {
-  padding: 0.35rem 0.5rem 0.55rem;
-  color: var(--green-dark);
-  font-size: 0.78rem;
-}
-
-.menu-popover button,
-.menu-popover a {
-  min-height: 2.7rem;
-  display: flex;
-  align-items: center;
-  padding: 0 0.55rem;
-  border: 0;
-  border-radius: 0.65rem;
-  color: var(--ink);
-  background: transparent;
-  text-align: left;
-  text-decoration: none;
-  font-size: 0.9rem;
-  cursor: pointer;
-}
-
-.menu-popover button:hover,
-.menu-popover a:hover {
-  background: var(--green-pale);
-}
-
 .mode-tabs {
   width: min(100% - 1.25rem, 660px);
   display: grid;
@@ -984,12 +924,6 @@
 
   .brand-school strong {
     font-size: 0.7rem;
-  }
-
-  .menu-button {
-    width: 2.2rem;
-    height: 2.2rem;
-    font-size: 1.42rem;
   }
 
   .mode-tabs {
