@@ -1,6 +1,7 @@
 -- Calendar closures for the 2026-27 school year.
 -- Weekends and dates marked red in the CEIP Bonavista school calendar cannot
 -- receive reservations, including requests sent directly to the RPC.
+-- The 2026-27 booking period runs from 7 September through 18 June.
 
 begin;
 
@@ -53,7 +54,9 @@ set search_path = pg_catalog, public
 set row_security = off
 as $$
 begin
-  if extract(isodow from new.booking_date) in (6, 7)
+  if new.booking_date < date '2026-09-07'
+     or new.booking_date > date '2027-06-18'
+     or extract(isodow from new.booking_date) in (6, 7)
      or exists (
        select 1
        from public.school_calendar_closures as closures

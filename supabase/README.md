@@ -6,4 +6,4 @@
 
 The second migration enables the agreed no-login QR workflow. Visitors can read active resources and sessions, view availability totals without teacher names, create bookings through a database function, and cancel bookings with a private token stored in that browser. Reservation records and teacher names have no direct public table access.
 
-The third migration records the non-lective dates from the 2026-27 CEIP Bonavista calendar and rejects reservations on weekends and those dates. The 18 June 2027 final day with pupils is marked in the frontend; the last-day marker is informational.
+The third migration records the non-lective dates from the 2026-27 CEIP Bonavista calendar and rejects reservations outside the school period (7 September 2026 through 18 June 2027), on weekends, and on those dates. The 18 June 2027 final day with pupils is also marked in the frontend.

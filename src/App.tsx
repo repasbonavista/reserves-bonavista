@@ -35,6 +35,8 @@ type AppTab = 'calendar' | 'quick' | 'blocks'
 type CalendarScreen = 'calendar' | 'sessions' | 'detail' | 'reservation-detail'
 
 const savedReservationsKey = 'reserves-bonavista-reservations'
+const firstSchoolDay = '2026-09-07'
+const lastSchoolDay = '2027-06-18'
 
 // Dies no lectius marcats en roig al calendari escolar 2026-27 del centre.
 const nonLectiveDates = new Set([
@@ -259,7 +261,8 @@ function App() {
 
   function isNonLectiveDate(date: string) {
     const weekday = new Date(`${date}T12:00:00`).getDay()
-    return weekday === 0 || weekday === 6 || nonLectiveDates.has(date)
+    return date < firstSchoolDay || date > lastSchoolDay
+      || weekday === 0 || weekday === 6 || nonLectiveDates.has(date)
   }
 
   function dayStatus(date: string) {
