@@ -1,7 +1,6 @@
 import { useEffect, useMemo, useState, type FormEvent } from 'react'
 import './App.css'
 import { supabase } from './lib/supabase'
-import schoolLogo from './assets/ceip-bonavista-logo.jpg'
 
 type Resource = {
   id: string
@@ -35,6 +34,7 @@ type AppTab = 'calendar' | 'quick' | 'blocks'
 type CalendarScreen = 'calendar' | 'sessions' | 'detail' | 'reservation-detail'
 
 const savedReservationsKey = 'reserves-bonavista-reservations'
+const schoolLogo = '/reserves-bonavista/ceip-bonavista-logo.jpg'
 const firstSchoolDay = '2026-09-07'
 const lastSchoolDay = '2027-06-18'
 
