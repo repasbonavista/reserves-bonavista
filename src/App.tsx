@@ -165,7 +165,8 @@ function App() {
     ).filter((date) => date >= today)
   }, [today, visibleMonth])
   const availabilityDates = useMemo(() => {
-    if (activeTab === 'blocks') return bookingDates.length ? bookingDates : (bookingDate ? [bookingDate] : calendarDates)
+    if (activeTab === 'blocks') return bookingDates.length ? bookingDates : (bookingDate ? [bookingDate] : [])
+    if (activeTab === 'quick') return bookingDate ? [bookingDate] : []
     return calendarDates
   }, [activeTab, bookingDate, bookingDates, calendarDates])
   const calendarCells = useMemo(() => getCalendarCells(visibleMonth), [visibleMonth])
@@ -331,14 +332,24 @@ function App() {
     }
 
     setIsSubmitting(true)
-    const { data, error } = await supabase.rpc('create_reservation_group', {
-      p_teacher_name: teacher.trim(),
-      p_resource_id: resource.id,
-      p_session_id: selectedSession.id,
-      p_booking_dates: dates,
-      p_quantity: quantity,
-    })
-    setIsSubmitting(false)
+    let data: any
+    let error: { message: string } | null = null
+    try {
+      const result = await supabase.rpc('create_reservation_group', {
+        p_teacher_name: teacher.trim(),
+        p_resource_id: resource.id,
+        p_session_id: selectedSession.id,
+        p_booking_dates: dates,
+        p_quantity: quantity,
+      })
+      data = result.data
+      error = result.error
+    } catch {
+      setMessage('No s’ha pogut crear la reserva per un problema de connexió. Torna-ho a provar.')
+      return
+    } finally {
+      setIsSubmitting(false)
+    }
 
     if (error) {
       setMessage(error.message.includes('remaining availability')
@@ -447,7 +458,7 @@ function App() {
 
   function renderSessionRows(dates: string[], selectSession: (session: SchoolSession) => void) {
     return (
-      <div className="session-list" role="group" aria-label="Sessions del dia">
+      <div className="session-list" role="group" aria-label="Sessions del dia" aria-busy={isLoadingAvailability}>
         {sessions.map((item) => {
           const available = availableForSession(item.id, dates)
           const unavailable = available !== null && available < 1
@@ -463,7 +474,7 @@ function App() {
               key={item.id}
               type="button"
               aria-label={`${item.number}a sessió, ${status}`}
-              disabled={unavailable || isLoadingAvailability || dates.length === 0}
+              disabled={unavailable || dates.length === 0}
               onClick={() => selectSession(item)}
             >
               <strong>{item.number}a sessió</strong>
@@ -663,6 +674,7 @@ function App() {
                 </div>
                 <form className="reservation-form" onSubmit={handleSubmit}>
                   {renderTeacherAndQuantity()}
+                  {isLoadingAvailability && <p className="inline-note" role="status">Comprovant la disponibilitat; podràs confirmar quan acabe.</p>}
                   <button className="primary-button" type="submit" disabled={isSubmitting || isLoadingAvailability || !selectedSession}>
                     {isSubmitting ? 'Enviant…' : 'Confirmar reserva'}
                   </button>
@@ -719,6 +731,7 @@ function App() {
               <div className="section-heading"><h2>{activeTab === 'blocks' ? 'Sessió per a cada data' : 'Sessions del dia'}</h2></div>
               {activeTab === 'blocks' && bookingDates.length > 0 && <p className="inline-note">Es crearan {bookingDates.length} reserves setmanals, sempre que hi haja disponibilitat.</p>}
               {renderSessionRows(activeTab === 'blocks' ? bookingDates : [bookingDate], (item) => { setSelectedSessionId(item.id); setMessage('') })}
+              {isLoadingAvailability && <p className="inline-note" role="status">Comprovant la disponibilitat; podràs confirmar quan acabe.</p>}
               {renderTeacherAndQuantity()}
               <button className="primary-button" type="submit" disabled={isSubmitting || isLoading || isLoadingAvailability || !selectedSession}>
                 {isSubmitting ? 'Enviant…' : activeTab === 'blocks' ? 'Confirmar reserves' : 'Nova reserva'}
