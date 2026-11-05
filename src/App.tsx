@@ -575,7 +575,7 @@ function App() {
             {loadError || 'Carregant els recursos del centre…'}
           </div>
         )}
-        {renderMessage()}
+        {activeTab === 'calendar' && renderMessage()}
 
         {activeTab === 'calendar' && (
           <section className="screen-card">
@@ -655,8 +655,8 @@ function App() {
                   setSelectedSessionId(item.id)
                   setCalendarScreen('detail')
                 })}
+                <p className="inline-note">Toca una sessió lliure per revisar les dades i confirmar la reserva.</p>
                 {availabilityError && <p className="inline-note">No s’ha pogut consultar la disponibilitat ara mateix.</p>}
-                <button className="primary-button" type="button" onClick={() => openTab('quick')}>＋ Nova reserva ràpida</button>
               </>
             )}
 
@@ -675,6 +675,7 @@ function App() {
                 <form className="reservation-form" onSubmit={handleSubmit}>
                   {renderTeacherAndQuantity()}
                   {isLoadingAvailability && <p className="inline-note" role="status">Comprovant la disponibilitat; podràs confirmar quan acabe.</p>}
+                  {message && <p className="app-message" role="status">{message}</p>}
                   <button className="primary-button" type="submit" disabled={isSubmitting || isLoadingAvailability || !selectedSession}>
                     {isSubmitting ? 'Enviant…' : 'Confirmar reserva'}
                   </button>
@@ -733,8 +734,9 @@ function App() {
               {renderSessionRows(activeTab === 'blocks' ? bookingDates : [bookingDate], (item) => { setSelectedSessionId(item.id); setMessage('') })}
               {isLoadingAvailability && <p className="inline-note" role="status">Comprovant la disponibilitat; podràs confirmar quan acabe.</p>}
               {renderTeacherAndQuantity()}
+              {message && <p className="app-message" role="status">{message}</p>}
               <button className="primary-button" type="submit" disabled={isSubmitting || isLoading || isLoadingAvailability || !selectedSession}>
-                {isSubmitting ? 'Enviant…' : activeTab === 'blocks' ? 'Confirmar reserves' : 'Nova reserva'}
+                {isSubmitting ? 'Enviant…' : activeTab === 'blocks' ? 'Confirmar reserves' : 'Reservar'}
               </button>
             </form>
           </section>
