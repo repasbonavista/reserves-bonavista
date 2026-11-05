@@ -719,6 +719,30 @@ function App() {
   return (
     <div className="app-shell">
       <header className="topbar">
+        <div className="header-waves" aria-hidden="true">
+          <svg viewBox="0 0 1440 120" preserveAspectRatio="none">
+            <defs>
+              <linearGradient id="wave-light" x1="0" y1="0" x2="1" y2="0">
+                <stop offset="0%" stopColor="#dff3bd" />
+                <stop offset="52%" stopColor="#c7e99a" />
+                <stop offset="100%" stopColor="#b3df79" />
+              </linearGradient>
+              <linearGradient id="wave-middle" x1="0" y1="0" x2="1" y2="0">
+                <stop offset="0%" stopColor="#b1df78" />
+                <stop offset="52%" stopColor="#91d34f" />
+                <stop offset="100%" stopColor="#7bc83d" />
+              </linearGradient>
+              <linearGradient id="wave-front" x1="0" y1="0" x2="1" y2="0">
+                <stop offset="0%" stopColor="#8fd14c" />
+                <stop offset="52%" stopColor="#68bd32" />
+                <stop offset="100%" stopColor="#54ad25" />
+              </linearGradient>
+            </defs>
+            <path d="M0 42 C140 67 218 27 354 39 C500 52 550 91 712 73 C878 55 945 17 1095 33 C1235 48 1323 66 1440 37 V120 H0 Z" fill="url(#wave-light)" />
+            <path d="M0 69 C133 46 235 82 377 70 C540 56 599 34 752 52 C911 71 1005 99 1164 79 C1284 64 1360 46 1440 59 V120 H0 Z" fill="url(#wave-middle)" opacity="0.92" />
+            <path d="M0 87 C159 67 255 99 414 86 C568 74 637 57 790 73 C955 90 1060 112 1209 96 C1313 85 1371 73 1440 80 V120 H0 Z" fill="url(#wave-front)" opacity="0.92" />
+          </svg>
+        </div>
         <a className="brand" href="#inici" aria-label="Reserves CEIP Bonavista, inici" onClick={() => openTab('calendar')}>
           <img className="brand-logo" src={schoolLogo} alt="CEIP Bonavista d’Alaquàs" />
           <span className="brand-school">
