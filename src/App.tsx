@@ -740,11 +740,6 @@ function App() {
           </section>
         )}
 
-        <aside className="help-card">
-          <span className="help-icon" aria-hidden="true">i</span>
-          <span><strong>Necessites ajuda?</strong><small>Consulta amb l’equip de coordinació del centre.</small></span>
-          <span className="row-chevron" aria-hidden="true">›</span>
-        </aside>
       </main>
 
       <footer className="footer"><span>CEIP BONAVISTA</span><span>Una eina per a compartir millor</span></footer>
