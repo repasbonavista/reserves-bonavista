@@ -72,27 +72,6 @@
   flex: 0 0 auto;
 }
 
-.login-pill {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.38rem;
-  padding: 0.43rem 0.58rem;
-  border: 1px solid #dbe4d4;
-  border-radius: 999px;
-  color: #526047;
-  background: #f6f9f2;
-  font-size: 0.63rem;
-  font-weight: 700;
-  white-space: nowrap;
-}
-
-.login-pill > span {
-  width: 0.42rem;
-  height: 0.42rem;
-  border-radius: 50%;
-  background: #a2bf51;
-}
-
 .menu-button {
   width: 2.55rem;
   height: 2.55rem;
@@ -874,11 +853,6 @@
 
   .brand-purpose strong {
     font-size: 0.7rem;
-  }
-
-  .login-pill {
-    padding: 0.37rem 0.46rem;
-    font-size: 0.58rem;
   }
 
   .menu-button {

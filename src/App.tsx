@@ -521,7 +521,6 @@ function App() {
           <span className="brand-purpose">Reserves<br /><strong>del centre</strong></span>
         </a>
         <div className="topbar-actions">
-          <span className="login-pill"><span /> Sense iniciar sessió</span>
           <button
             className="menu-button"
             type="button"
@@ -657,7 +656,6 @@ function App() {
                     {isSubmitting ? 'Enviant…' : 'Confirmar reserva'}
                   </button>
                 </form>
-                <p className="privacy-note">Sense iniciar sessió. La reserva es pot gestionar des d’aquest navegador.</p>
               </>
             )}
 
