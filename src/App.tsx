@@ -220,7 +220,6 @@ function App() {
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [loadError, setLoadError] = useState('')
   const [message, setMessage] = useState('')
-  const [menuOpen, setMenuOpen] = useState(false)
 
   const resource = resources.find((item) => item.id === selectedResourceId)
   const selectedSession = sessions.find((item) => item.id === selectedSessionId)
@@ -449,7 +448,6 @@ function App() {
     setSelectedSessionId('')
     setRepeatUntil('')
     setMessage('')
-    setMenuOpen(false)
   }
 
   function openReservationDetails(reservation: PublicReservation, returnScreen: 'calendar' | 'sessions') {
@@ -750,26 +748,6 @@ function App() {
             <strong>CEIP BONAVISTA</strong>
           </span>
         </a>
-        <div className="topbar-actions">
-          <button
-            className="menu-button"
-            type="button"
-            aria-label={menuOpen ? 'Tancar menú' : 'Obrir menú'}
-            aria-expanded={menuOpen}
-            onClick={() => setMenuOpen((open) => !open)}
-          >
-            {menuOpen ? '×' : '☰'}
-          </button>
-        </div>
-        {menuOpen && (
-          <div className="menu-popover">
-            <strong>Reserves del centre</strong>
-            <button type="button" onClick={() => { openTab('calendar'); setCalendarScreen('calendar') }}>Calendari</button>
-            <button type="button" onClick={() => openTab('quick')}>Reserva ràpida</button>
-            <button type="button" onClick={() => openTab('blocks')}>Reserva per blocs</button>
-                        <a href="#reserves-actives" onClick={() => openTab('calendar')}>Reserves actives</a>
-          </div>
-        )}
       </header>
 
       <nav className="mode-tabs" aria-label="Tipus de reserva">
