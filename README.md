@@ -4,7 +4,7 @@ Aplicació web en valencià per a reservar espais i recursos escolars del CEIP B
 
 ## Estat del projecte
 
-El frontend carrega les categories i les sessions de Supabase, consulta la disponibilitat i permet crear, repetir i cancel·lar reserves sense iniciar sessió. Les categories confirmades són Aula STEM, Aula d'ordinadors, Biblioteca i Reserva de portàtils; aquesta última té 20 unitats. Les sis sessions es mostren sense hores fixes perquè l'horari varia al llarg del curs. Les dues migracions de Supabase ja estan aplicades. GitHub Pages ja està configurat per publicar amb GitHub Actions; abans del primer desplegament cal afegir la clau publicable de Supabase als secrets del repositori. El QR queda pendent.
+El frontend carrega les categories i les sessions de Supabase, consulta la disponibilitat i permet crear, repetir i cancel·lar reserves sense iniciar sessió. La interfície és prioritàriament per a mòbil i segueix la referència visual del centre amb el logotip oficial. Les categories són Aula STEM, Aula d'ordinadors, Biblioteca i Reserva de portàtils; aquesta última té 20 unitats. Les sis sessions es mostren sense hores fixes perquè l'horari varia al llarg del curs. El calendari escolar 2026-27 està incorporat: els caps de setmana i les dates no lectives marcades al PDF no admeten reserves, i el 18 de juny de 2027 apareix com a últim dia de classes amb alumnat. Les tres migracions de Supabase ja estan aplicades. GitHub Pages està configurat amb GitHub Actions i el secret de la clau publicable ja està afegit. La publicació es fa automàticament amb GitHub Actions; el QR queda pendent de generar.
 
 ## Desenvolupament local
 
@@ -19,7 +19,7 @@ Per generar els fitxers estàtics:
 npm run build
 ```
 
-El frontend està preparat per a publicar-se en GitHub Pages sota la ruta `/reserves-bonavista/`. El projecte local utilitza `.env.local`, que no s'ha de pujar al repositori. Per al desplegament, afegeix `VITE_SUPABASE_PUBLISHABLE_KEY` com a secret del repositori en **Settings → Secrets and variables → Actions**. L'URL del projecte ja està configurada en el flux de publicació.
+El frontend està preparat per a publicar-se en GitHub Pages sota la ruta `/reserves-bonavista/`. El projecte local utilitza `.env.local`, que no s'ha de pujar al repositori. Per al desplegament, `VITE_SUPABASE_PUBLISHABLE_KEY` ja està guardada com a secret del repositori en **Settings → Secrets and variables → Actions**. L'URL del projecte està configurada en el flux de publicació.
 
 ## Seguretat
 

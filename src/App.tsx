@@ -1,12 +1,11 @@
 import { useEffect, useMemo, useState, type FormEvent } from 'react'
-import { supabase } from './lib/supabase'
 import './App.css'
+import { supabase } from './lib/supabase'
+import schoolLogo from './assets/ceip-bonavista-logo.jpg'
 
 type Resource = {
   id: string
   name: string
-  description: string
-  icon: string
   capacity: number
 }
 
@@ -29,31 +28,29 @@ type SavedReservation = {
   sessionLabel: string
   dates: string[]
   quantity: number
+  teacherName?: string
 }
+
+type AppTab = 'calendar' | 'quick' | 'blocks'
+type CalendarScreen = 'calendar' | 'sessions' | 'detail' | 'reservation-detail'
 
 const savedReservationsKey = 'reserves-bonavista-reservations'
 
-const resourcePresentation: Record<string, { icon: string; description: string }> = {
-  'Aula STEM': { icon: '✳', description: 'Reserva d’aula' },
-  "Aula d'ordinadors": { icon: '▣', description: 'Reserva d’aula' },
-  Biblioteca: { icon: '▤', description: 'Reserva d’espai' },
-  'Reserva de portàtils': { icon: '▱', description: '20 unitats al centre' },
-}
+// Dies no lectius marcats en roig al calendari escolar 2026-27 del centre.
+const nonLectiveDates = new Set([
+  '2026-09-08', '2026-09-09',
+  '2026-10-09', '2026-10-12',
+  '2026-12-07', '2026-12-08', '2026-12-23', '2026-12-24', '2026-12-25',
+  '2026-12-28', '2026-12-29', '2026-12-30', '2026-12-31',
+  '2027-01-01', '2027-01-04', '2027-01-05', '2027-01-06',
+  '2027-03-16', '2027-03-17', '2027-03-18', '2027-03-19',
+  '2027-03-25', '2027-03-26', '2027-03-29', '2027-03-30', '2027-03-31',
+  '2027-04-01', '2027-04-02', '2027-04-05',
+])
 
-function formatDate(value: string) {
-  if (!value) return 'Tria un dia'
-  return new Intl.DateTimeFormat('ca-ES', {
-    weekday: 'long',
-    day: 'numeric',
-    month: 'long',
-  }).format(new Date(`${value}T12:00:00`))
-}
-
-function formatShortDate(value: string) {
-  return new Intl.DateTimeFormat('ca-ES', {
-    day: 'numeric',
-    month: 'short',
-  }).format(new Date(`${value}T12:00:00`))
+const schoolDateMarkers: Record<string, string> = {
+  '2026-09-07': 'Inici de les classes amb alumnat',
+  '2027-06-18': 'Últim dia de classes amb alumnat',
 }
 
 function dateToInputValue(date: Date) {
@@ -61,6 +58,27 @@ function dateToInputValue(date: Date) {
   const month = String(date.getMonth() + 1).padStart(2, '0')
   const day = String(date.getDate()).padStart(2, '0')
   return `${year}-${month}-${day}`
+}
+
+function formatDate(value: string, withYear = true) {
+  if (!value) return 'Tria un dia'
+  const date = new Intl.DateTimeFormat('ca-ES', {
+    weekday: 'long',
+    day: 'numeric',
+    month: 'long',
+    ...(withYear ? { year: 'numeric' as const } : {}),
+  }).format(new Date(`${value}T12:00:00`))
+  return date.charAt(0).toLocaleUpperCase('ca-ES') + date.slice(1)
+}
+
+function formatMonth(date: Date) {
+  const value = new Intl.DateTimeFormat('ca-ES', { month: 'long', year: 'numeric' }).format(date)
+  return value.charAt(0).toLocaleUpperCase('ca-ES') + value.slice(1)
+}
+
+function formatShortDate(value: string) {
+  return new Intl.DateTimeFormat('ca-ES', { day: 'numeric', month: 'short' })
+    .format(new Date(`${value}T12:00:00`))
 }
 
 function makeBookingDates(start: string, end: string, repeatWeekly: boolean) {
@@ -80,6 +98,20 @@ function makeBookingDates(start: string, end: string, repeatWeekly: boolean) {
   return dates
 }
 
+function getCalendarCells(month: Date) {
+  const firstDay = new Date(month.getFullYear(), month.getMonth(), 1)
+  const daysInMonth = new Date(month.getFullYear(), month.getMonth() + 1, 0).getDate()
+  const mondayOffset = (firstDay.getDay() + 6) % 7
+  const cellCount = Math.ceil((mondayOffset + daysInMonth) / 7) * 7
+
+  return Array.from({ length: cellCount }, (_, index) => {
+    const day = index - mondayOffset + 1
+    if (day < 1 || day > daysInMonth) return null
+    const date = new Date(month.getFullYear(), month.getMonth(), day)
+    return { day, date: dateToInputValue(date), weekday: date.getDay() }
+  })
+}
+
 function readSavedReservations(): SavedReservation[] {
   try {
     const value = localStorage.getItem(savedReservationsKey)
@@ -91,34 +123,50 @@ function readSavedReservations(): SavedReservation[] {
 }
 
 function App() {
+  const today = dateToInputValue(new Date())
   const [resources, setResources] = useState<Resource[]>([])
   const [sessions, setSessions] = useState<SchoolSession[]>([])
   const [selectedResourceId, setSelectedResourceId] = useState('')
-  const [bookingDate, setBookingDate] = useState('')
+  const [bookingDate, setBookingDate] = useState(today)
   const [repeatUntil, setRepeatUntil] = useState('')
   const [selectedSessionId, setSelectedSessionId] = useState('')
   const [teacher, setTeacher] = useState('')
   const [quantity, setQuantity] = useState(1)
-  const [repeatWeekly, setRepeatWeekly] = useState(false)
+  const [activeTab, setActiveTab] = useState<AppTab>('calendar')
+  const [calendarScreen, setCalendarScreen] = useState<CalendarScreen>('calendar')
+  const [visibleMonth, setVisibleMonth] = useState(() => new Date(new Date().getFullYear(), new Date().getMonth(), 1))
   const [availability, setAvailability] = useState<Availability[]>([])
   const [availabilityRevision, setAvailabilityRevision] = useState(0)
   const [savedReservations, setSavedReservations] = useState<SavedReservation[]>(readSavedReservations)
+  const [openReservationId, setOpenReservationId] = useState('')
+  const [reservationToCancel, setReservationToCancel] = useState<SavedReservation | null>(null)
   const [isLoading, setIsLoading] = useState(true)
   const [isLoadingAvailability, setIsLoadingAvailability] = useState(false)
+  const [availabilityError, setAvailabilityError] = useState(false)
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [loadError, setLoadError] = useState('')
   const [message, setMessage] = useState('')
+  const [menuOpen, setMenuOpen] = useState(false)
 
   const resource = resources.find((item) => item.id === selectedResourceId)
   const selectedSession = sessions.find((item) => item.id === selectedSessionId)
+  const openReservation = savedReservations.find((item) => item.groupId === openReservationId)
+  const repeatWeekly = activeTab === 'blocks'
   const bookingDates = useMemo(
     () => makeBookingDates(bookingDate, repeatUntil, repeatWeekly),
     [bookingDate, repeatUntil, repeatWeekly],
   )
-  const availabilityDates = useMemo(
-    () => repeatWeekly && !repeatUntil && bookingDate ? [bookingDate] : bookingDates,
-    [bookingDate, bookingDates, repeatUntil, repeatWeekly],
-  )
+  const calendarDates = useMemo(() => {
+    const daysInMonth = new Date(visibleMonth.getFullYear(), visibleMonth.getMonth() + 1, 0).getDate()
+    return Array.from({ length: daysInMonth }, (_, index) =>
+      dateToInputValue(new Date(visibleMonth.getFullYear(), visibleMonth.getMonth(), index + 1)),
+    ).filter((date) => date >= today)
+  }, [today, visibleMonth])
+  const availabilityDates = useMemo(() => {
+    if (activeTab === 'blocks') return bookingDates.length ? bookingDates : (bookingDate ? [bookingDate] : calendarDates)
+    return calendarDates
+  }, [activeTab, bookingDate, bookingDates, calendarDates])
+  const calendarCells = useMemo(() => getCalendarCells(visibleMonth), [visibleMonth])
 
   useEffect(() => {
     if (!supabase) {
@@ -128,7 +176,6 @@ function App() {
     }
 
     let isCurrent = true
-
     async function loadSchoolData() {
       const [categoriesResult, resourcesResult, sessionsResult] = await Promise.all([
         supabase!.from('resource_categories').select('id,name,sort_order').eq('is_active', true).order('sort_order'),
@@ -138,7 +185,7 @@ function App() {
 
       if (!isCurrent) return
       if (categoriesResult.error || resourcesResult.error || sessionsResult.error) {
-        setLoadError('No s’han pogut carregar els recursos. La configuració d’accés encara està en preparació.')
+        setLoadError('No s’han pogut carregar els recursos. Revisa la configuració d’accés.')
         setIsLoading(false)
         return
       }
@@ -150,19 +197,14 @@ function App() {
         (categoryOrder.get(left.category_id) ?? 0) - (categoryOrder.get(right.category_id) ?? 0)
         || left.name.localeCompare(right.name),
       )
-      const loadedResources = orderedResourceRows.map((item) => {
-        const name = categoryNames.get(item.category_id) ?? item.name
-        const presentation = resourcePresentation[name] ?? { icon: '◇', description: 'Recurs del centre' }
-        return {
-          id: item.id,
-          name,
-          description: item.capacity > 1 ? `${item.capacity} unitats al centre` : presentation.description,
-          icon: presentation.icon,
-          capacity: item.capacity,
-        }
-      })
+      const loadedResources = orderedResourceRows.map((item) => ({
+        id: item.id,
+        name: categoryNames.get(item.category_id) ?? item.name,
+        capacity: item.capacity,
+      }))
 
       setResources(loadedResources)
+      setSelectedResourceId((current) => current || loadedResources[0]?.id || '')
       setSessions((sessionsResult.data ?? []).map((item) => ({
         id: item.id,
         number: item.session_number,
@@ -180,11 +222,13 @@ function App() {
   useEffect(() => {
     if (!supabase || !resource || availabilityDates.length === 0) {
       setAvailability([])
+      setIsLoadingAvailability(false)
       return
     }
 
     let isCurrent = true
     setAvailability([])
+    setAvailabilityError(false)
     setIsLoadingAvailability(true)
 
     async function loadAvailability() {
@@ -194,11 +238,8 @@ function App() {
       })
 
       if (!isCurrent) return
-      if (error) {
-        setAvailability([])
-      } else {
-        setAvailability((data ?? []) as Availability[])
-      }
+      setAvailabilityError(Boolean(error))
+      setAvailability(error ? [] : (data ?? []) as Availability[])
       setIsLoadingAvailability(false)
     }
 
@@ -208,11 +249,45 @@ function App() {
     }
   }, [availabilityDates, availabilityRevision, resource])
 
-  function availableForSession(sessionId: string) {
-    if (availabilityDates.length === 0) return null
-    const records = availability.filter((item) => item.session_id === sessionId)
-    if (records.length !== availabilityDates.length) return null
+  function availableForSession(sessionId: string, dates: string[]) {
+    if (dates.length === 0) return null
+    const dateSet = new Set(dates)
+    const records = availability.filter((item) => item.session_id === sessionId && dateSet.has(item.booking_date))
+    if (records.length !== dates.length) return null
     return Math.min(...records.map((item) => item.available_quantity))
+  }
+
+  function isNonLectiveDate(date: string) {
+    const weekday = new Date(`${date}T12:00:00`).getDay()
+    return weekday === 0 || weekday === 6 || nonLectiveDates.has(date)
+  }
+
+  function dayStatus(date: string) {
+    if (isNonLectiveDate(date)) return 'non-lectiu'
+    if (date < today) return 'past'
+    if (isLoadingAvailability) return 'loading'
+    const statuses = sessions.map((item) => availableForSession(item.id, [date]))
+    if (availabilityError || statuses.length === 0 || statuses.some((value) => value === null)) return 'unknown'
+    return statuses.some((value) => value !== null && value > 0) ? 'free' : 'reserved'
+  }
+
+  function setDate(value: string) {
+    setBookingDate(value)
+    if (value) {
+      const parsed = new Date(`${value}T12:00:00`)
+      setVisibleMonth(new Date(parsed.getFullYear(), parsed.getMonth(), 1))
+    }
+    setSelectedSessionId('')
+    setMessage('')
+  }
+
+  function openTab(tab: AppTab) {
+    setActiveTab(tab)
+    setCalendarScreen('calendar')
+    setSelectedSessionId('')
+    setRepeatUntil('')
+    setMessage('')
+    setMenuOpen(false)
   }
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
@@ -223,20 +298,30 @@ function App() {
       setMessage('Tria un recurs, un dia i una sessió abans de continuar.')
       return
     }
-    if (repeatWeekly && !repeatUntil) {
+    if (activeTab === 'blocks' && !repeatUntil) {
       setMessage('Indica fins a quin dia vols repetir la reserva.')
       return
     }
-    if (bookingDates.length === 0 || bookingDates.length > 60) {
+
+    const dates = makeBookingDates(bookingDate, repeatUntil, activeTab === 'blocks')
+    if (dates.length === 0 || dates.length > 60) {
       setMessage('El període ha de contindre entre 1 i 60 dates.')
+      return
+    }
+    if (dates.some(isNonLectiveDate)) {
+      setMessage('Tria només dies lectius del calendari escolar.')
       return
     }
     if (!teacher.trim()) {
       setMessage('Escriu el nom del docent que fa la reserva.')
       return
     }
+    if (isLoadingAvailability) {
+      setMessage('Espera un moment mentre comprovem la disponibilitat.')
+      return
+    }
 
-    const minAvailable = availableForSession(selectedSession.id)
+    const minAvailable = availableForSession(selectedSession.id, dates)
     if (minAvailable !== null && quantity > minAvailable) {
       setMessage(`En alguna de les dates només queden ${minAvailable} unitats disponibles.`)
       return
@@ -247,7 +332,7 @@ function App() {
       p_teacher_name: teacher.trim(),
       p_resource_id: resource.id,
       p_session_id: selectedSession.id,
-      p_booking_dates: bookingDates,
+      p_booking_dates: dates,
       p_quantity: quantity,
     })
     setIsSubmitting(false)
@@ -255,7 +340,9 @@ function App() {
     if (error) {
       setMessage(error.message.includes('remaining availability')
         ? 'Ja no hi ha prou unitats lliures en una de les dates triades. Revisa la disponibilitat.'
-        : 'No s’ha pogut crear la reserva. Torna-ho a provar d’ací a un moment.')
+        : error.message.includes('non-lective')
+          ? 'Hi ha una data no lectiva en la selecció. Revisa el calendari escolar.'
+          : 'No s’ha pogut crear la reserva. Torna-ho a provar d’ací a un moment.')
       return
     }
 
@@ -265,29 +352,26 @@ function App() {
       return
     }
 
-    const newReservation: SavedReservation = {
+    const nextReservations: SavedReservation[] = [{
       groupId: created.group_id,
       token: created.cancellation_token,
       resourceName: resource.name,
       sessionLabel: selectedSession.label,
-      dates: bookingDates,
+      dates,
       quantity,
-    }
-    const nextReservations = [newReservation, ...savedReservations]
+      teacherName: teacher.trim(),
+    }, ...savedReservations]
     setSavedReservations(nextReservations)
-    let storedForCancellation = false
     try {
       localStorage.setItem(savedReservationsKey, JSON.stringify(nextReservations))
-      storedForCancellation = true
     } catch {
-      // The confirmation remains visible even if local browser storage is unavailable.
+      // La confirmació continua visible encara que el navegador no puga guardar-la.
     }
 
-    setMessage(storedForCancellation
-      ? 'Reserva confirmada. La podràs consultar o cancel·lar des d’aquest navegador.'
-      : 'Reserva confirmada. No s’ha pogut guardar en aquest navegador per a consultar-la o cancel·lar-la després.')
-    setAvailability([])
+    setMessage('Reserva confirmada. La podràs consultar o cancel·lar des d’aquest navegador.')
     setAvailabilityRevision((revision) => revision + 1)
+    setActiveTab('calendar')
+    setCalendarScreen('sessions')
   }
 
   async function cancelReservation(reservation: SavedReservation) {
@@ -299,6 +383,7 @@ function App() {
 
     if (error || data !== true) {
       setMessage('No s’ha pogut cancel·lar la reserva. Torna-ho a provar.')
+      setReservationToCancel(null)
       return
     }
 
@@ -307,295 +392,346 @@ function App() {
     try {
       localStorage.setItem(savedReservationsKey, JSON.stringify(remaining))
     } catch {
-      // The current screen remains updated even if browser storage is unavailable.
+      // La pantalla actual es manté actualitzada encara que el navegador no puga guardar-la.
     }
     setMessage('La reserva s’ha cancel·lat.')
-    setAvailability([])
+    setReservationToCancel(null)
+    setCalendarScreen('calendar')
     setAvailabilityRevision((revision) => revision + 1)
   }
 
+  function modifyReservation(reservation: SavedReservation) {
+    const matchedResource = resources.find((item) => item.name === reservation.resourceName)
+    const matchedSession = sessions.find((item) => item.label === reservation.sessionLabel)
+    const firstDate = reservation.dates[0] ?? today
+    if (matchedResource) setSelectedResourceId(matchedResource.id)
+    setDate(firstDate)
+    setSelectedSessionId(matchedSession?.id ?? '')
+    setTeacher(reservation.teacherName ?? '')
+    setQuantity(reservation.quantity)
+    setActiveTab('quick')
+    setCalendarScreen('calendar')
+    setMessage('Prepara la nova reserva i crea-la; després podràs anul·lar l’anterior.')
+  }
+
+  const requestedDates = activeTab === 'blocks' ? bookingDates : (bookingDate ? [bookingDate] : [])
   const maxQuantity = resource
-    ? Math.max(1, Math.min(resource.capacity, availableForSession(selectedSessionId) ?? resource.capacity))
+    ? Math.max(1, Math.min(resource.capacity, availableForSession(selectedSessionId, requestedDates) ?? resource.capacity))
     : 1
+
+  function renderResourceField() {
+    return (
+      <label className="field-label field-stack" htmlFor="resource-choice">
+        <span>Espai o recurs</span>
+        <select
+          id="resource-choice"
+          value={selectedResourceId}
+          onChange={(event) => {
+            setSelectedResourceId(event.target.value)
+            setQuantity(1)
+            setSelectedSessionId('')
+            setMessage('')
+          }}
+          required
+        >
+          <option value="" disabled>Tria un recurs</option>
+          {resources.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}
+        </select>
+      </label>
+    )
+  }
+
+  function renderSessionRows(dates: string[], selectSession: (session: SchoolSession) => void) {
+    return (
+      <div className="session-list" role="group" aria-label="Sessions del dia">
+        {sessions.map((item) => {
+          const available = availableForSession(item.id, dates)
+          const unavailable = available !== null && available < 1
+          const selected = selectedSessionId === item.id
+          const status = isLoadingAvailability ? 'Comprovant…'
+            : unavailable ? 'Reservada'
+              : available === null ? '—'
+                : resource && resource.capacity > 1 ? `${available} lliures` : 'Lliure'
+
+          return (
+            <button
+              className={`session-row${unavailable ? ' reserved' : ' free'}${selected ? ' selected' : ''}`}
+              key={item.id}
+              type="button"
+              aria-label={`${item.number}a sessió, ${status}`}
+              disabled={unavailable || isLoadingAvailability || dates.length === 0}
+              onClick={() => selectSession(item)}
+            >
+              <strong>{item.number}a sessió</strong>
+              <span className="session-status">{status}</span>
+              <span className="row-chevron" aria-hidden="true">›</span>
+            </button>
+          )
+        })}
+      </div>
+    )
+  }
+
+  function renderTeacherAndQuantity() {
+    return (
+      <div className="form-fields">
+        <label className="field-label field-stack" htmlFor="teacher-name">
+          <span>Nom del docent</span>
+          <input
+            id="teacher-name"
+            type="text"
+            value={teacher}
+            onChange={(event) => setTeacher(event.target.value)}
+            placeholder="Escriu el teu nom"
+            autoComplete="name"
+            maxLength={120}
+            required
+          />
+        </label>
+        {resource && resource.capacity > 1 && (
+          <label className="field-label field-stack" htmlFor="quantity">
+            <span>Quantitat (fins a {maxQuantity})</span>
+            <input
+              id="quantity"
+              type="number"
+              min="1"
+              max={maxQuantity}
+              value={quantity}
+              onChange={(event) => setQuantity(Number(event.target.value))}
+              required
+            />
+          </label>
+        )}
+      </div>
+    )
+  }
+
+  function renderMessage() {
+    return message ? <p className="app-message" role="status">{message}</p> : null
+  }
 
   return (
     <div className="app-shell">
       <header className="topbar">
-        <a className="brand" href="#inici" aria-label="Reserves CEIP Bonavista, inici">
-          <span className="brand-symbol" aria-hidden="true">b</span>
-          <span className="brand-copy">
-            <strong>RESERVES</strong>
-            <span>CEIP BONAVISTA</span>
-          </span>
+        <a className="brand" href="#inici" aria-label="Reserves CEIP Bonavista, inici" onClick={() => openTab('calendar')}>
+          <img className="brand-logo" src={schoolLogo} alt="CEIP Bonavista d’Alaquàs" />
+          <span className="brand-purpose">Reserves<br /><strong>del centre</strong></span>
         </a>
-        <div className="topbar-right">
-          <span className="preview-pill"><span /> Sense iniciar sessió</span>
-          <button className="help-button" type="button" aria-label="Ajuda">?</button>
+        <div className="topbar-actions">
+          <span className="login-pill"><span /> Sense iniciar sessió</span>
+          <button
+            className="menu-button"
+            type="button"
+            aria-label={menuOpen ? 'Tancar menú' : 'Obrir menú'}
+            aria-expanded={menuOpen}
+            onClick={() => setMenuOpen((open) => !open)}
+          >
+            {menuOpen ? '×' : '☰'}
+          </button>
         </div>
-      </header>
-
-      <main id="inici" className="main-layout">
-        <section className="intro-block">
-          <div className="intro-copy">
-            <p className="overline">ORGANITZACIÓ DEL CENTRE</p>
-            <h1>Reserva el que<br className="desktop-break" /> necessites.</h1>
-            <p className="lead">Tria un recurs, indica quan el necessites i envia la reserva en un moment.</p>
-          </div>
-          <div className="intro-art" aria-hidden="true">
-            <span className="art-sun" />
-            <span className="art-book book-one" />
-            <span className="art-book book-two" />
-            <span className="art-plant">✳</span>
-            <span className="art-caption">Fem fàcil<br />compartir recursos</span>
-          </div>
-        </section>
-
-        {(isLoading || loadError) && (
-          <div className="preview-notice" role={loadError ? 'alert' : 'status'}>
-            <span className="notice-icon" aria-hidden="true">i</span>
-            <span>{loadError || 'Carregant els recursos del centre…'}</span>
+        {menuOpen && (
+          <div className="menu-popover">
+            <strong>Reserves del centre</strong>
+            <button type="button" onClick={() => { openTab('calendar'); setCalendarScreen('calendar') }}>Calendari</button>
+            <button type="button" onClick={() => openTab('quick')}>Reserva ràpida</button>
+            <button type="button" onClick={() => openTab('blocks')}>Reserva per blocs</button>
+            <a href="#meues-reserves" onClick={() => setMenuOpen(false)}>Les meues reserves</a>
           </div>
         )}
+      </header>
 
-        <div className="content-grid">
-          <form className="booking-card" onSubmit={handleSubmit}>
-            <div className="card-heading">
-              <div>
-                <span className="step-label">PAS 1 <span>·</span> RECURS</span>
-                <h2>Què vols reservar?</h2>
-              </div>
-              <span className="heading-icon" aria-hidden="true">✳</span>
-            </div>
+      <nav className="mode-tabs" aria-label="Tipus de reserva">
+        <button type="button" className={activeTab === 'calendar' ? 'active' : ''} onClick={() => openTab('calendar')}>
+          <span aria-hidden="true">▦</span>Calendari
+        </button>
+        <button type="button" className={activeTab === 'quick' ? 'active' : ''} onClick={() => openTab('quick')}>
+          <span aria-hidden="true">▢</span>Reserva ràpida
+        </button>
+        <button type="button" className={activeTab === 'blocks' ? 'active' : ''} onClick={() => openTab('blocks')}>
+          <span aria-hidden="true">▣</span>Per blocs
+        </button>
+      </nav>
 
-            <div className="resource-grid" role="radiogroup" aria-label="Tria un recurs">
-              {resources.map((item) => (
-                <button
-                  className={`resource-option${selectedResourceId === item.id ? ' selected' : ''}`}
-                  key={item.id}
-                  type="button"
-                  role="radio"
-                  aria-checked={selectedResourceId === item.id}
-                  onClick={() => {
-                    setSelectedResourceId(item.id)
-                    setQuantity(1)
-                    setMessage('')
-                  }}
-                >
-                  <span className="resource-icon" aria-hidden="true">{item.icon}</span>
-                  <span className="resource-text">
-                    <strong>{item.name}</strong>
-                    <small>{item.description}</small>
-                  </span>
-                  <span className="radio-dot" aria-hidden="true" />
-                </button>
-              ))}
-              {!isLoading && !loadError && resources.length === 0 && (
-                <p className="empty-state">Encara no hi ha recursos actius.</p>
-              )}
-            </div>
+      <main id="inici" className="main-layout">
+        {(isLoading || loadError) && (
+          <div className={`notice${loadError ? ' error' : ''}`} role={loadError ? 'alert' : 'status'}>
+            {loadError || 'Carregant els recursos del centre…'}
+          </div>
+        )}
+        {renderMessage()}
 
-            <div className="form-divider" />
-
-            <div className="card-heading compact-heading">
-              <div>
-                <span className="step-label">PAS 2 <span>·</span> DATA I SESSIÓ</span>
-                <h2>Quan el necessites?</h2>
-              </div>
-              <span className="heading-icon calendar-icon" aria-hidden="true">▦</span>
-            </div>
-
-            <label className="field-label" htmlFor="booking-date">Dia de la reserva</label>
-            <div className="date-field">
-              <span aria-hidden="true">▦</span>
-              <input
-                id="booking-date"
-                type="date"
-                min={dateToInputValue(new Date())}
-                value={bookingDate}
-                onChange={(event) => {
-                  setBookingDate(event.target.value)
-                  setSelectedSessionId('')
-                  setMessage('')
-                }}
-                required
-              />
-            </div>
-
-            {repeatWeekly && (
-              <label className="repeat-end-field" htmlFor="repeat-until">
-                <span className="field-label">Repetir fins al dia</span>
-                <input
-                  id="repeat-until"
-                  className="text-input"
-                  type="date"
-                  min={bookingDate || dateToInputValue(new Date())}
-                  value={repeatUntil}
-                  onChange={(event) => {
-                    setRepeatUntil(event.target.value)
-                    setSelectedSessionId('')
-                    setMessage('')
-                  }}
-                  required
-                />
-              </label>
+        {activeTab === 'calendar' && (
+          <section className="screen-card">
+            {calendarScreen === 'calendar' && (
+              <>
+                <div className="screen-heading"><span className="heading-icon">▦</span><div><p>RESERVA PER DATA</p><h1>Calendari</h1></div></div>
+                {renderResourceField()}
+                <div className="month-controls">
+                  <button type="button" aria-label="Mes anterior" onClick={() => setVisibleMonth((month) => new Date(month.getFullYear(), month.getMonth() - 1, 1))}>‹</button>
+                  <h2>{formatMonth(visibleMonth)}</h2>
+                  <button type="button" aria-label="Mes següent" onClick={() => setVisibleMonth((month) => new Date(month.getFullYear(), month.getMonth() + 1, 1))}>›</button>
+                </div>
+                <div className="weekday-labels" aria-hidden="true">
+                  {['Dl', 'Dt', 'Dc', 'Dj', 'Dv', 'Ds', 'Dg'].map((day) => <span key={day}>{day}</span>)}
+                </div>
+                <div className="calendar-grid" role="grid" aria-label={formatMonth(visibleMonth)}>
+                  {calendarCells.map((cell, index) => {
+                    if (!cell) return <span className="calendar-empty" key={`empty-${index}`} />
+                    const status = dayStatus(cell.date)
+                    const isDisabled = cell.date < today || status === 'non-lectiu'
+                    const marker = schoolDateMarkers[cell.date]
+                    return (
+                      <button
+                        className={`calendar-day day-${status}${bookingDate === cell.date ? ' selected' : ''}${marker ? ' day-milestone' : ''}`}
+                        key={cell.date}
+                        type="button"
+                        role="gridcell"
+                        title={marker}
+                        aria-label={`${formatDate(cell.date)}${marker ? `, ${marker}` : ''}${status === 'non-lectiu' ? ', no lectiu' : status === 'reserved' ? ', sense sessions lliures' : status === 'free' ? ', amb sessions lliures' : ''}`}
+                        aria-pressed={bookingDate === cell.date}
+                        disabled={isDisabled}
+                        onClick={() => {
+                          setDate(cell.date)
+                          setCalendarScreen('sessions')
+                        }}
+                      >
+                        <span>{cell.day}</span>
+                        {status !== 'past' && <i aria-hidden="true" />}
+                      </button>
+                    )
+                  })}
+                </div>
+                <div className="calendar-legend">
+                  <span><i className="legend-free" />Lliure</span>
+                  <span><i className="legend-reserved" />Reservada</span>
+                  <span><i className="legend-closed" />No lectiu</span>
+                </div>
+                {availabilityError && <p className="inline-note">No s’ha pogut consultar la disponibilitat ara mateix.</p>}
+                <div id="meues-reserves" className="saved-section">
+                  <div className="section-heading"><h2>Les meues reserves</h2><span>{savedReservations.length}</span></div>
+                  {savedReservations.length === 0 ? (
+                    <p className="empty-note">Ací apareixeran les reserves creades des d’aquest navegador.</p>
+                  ) : (
+                    <div className="saved-list">
+                      {savedReservations.map((item) => (
+                        <button className="saved-item" type="button" key={item.groupId} onClick={() => { setOpenReservationId(item.groupId); setCalendarScreen('reservation-detail') }}>
+                          <span><strong>{item.resourceName}</strong><small>{formatShortDate(item.dates[0])} · {item.sessionLabel} sessió</small></span>
+                          <span className="row-chevron" aria-hidden="true">›</span>
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </>
             )}
 
-            <div className="session-label-row">
-              <span className="field-label">Sessió</span>
-              <span className="field-hint">Tria una de les sis sessions</span>
-            </div>
-            <div className="session-grid" role="group" aria-label="Tria una sessió">
-              {sessions.map((item) => {
-                const available = availableForSession(item.id)
-                const unavailable = available !== null && available < 1
-                return (
-                  <button
-                    className={`session-option${selectedSessionId === item.id ? ' selected' : ''}`}
-                    key={item.id}
-                    type="button"
-                    aria-label={`${item.label} sessió${available === null ? '' : `, ${available} unitats disponibles`}`}
-                    aria-pressed={selectedSessionId === item.id}
-                    disabled={unavailable}
-                    onClick={() => {
-                      setSelectedSessionId(item.id)
-                      setMessage('')
-                    }}
-                  >
-                    <span>{item.label}</span>
-                    {isLoadingAvailability && <small>…</small>}
-                    {!isLoadingAvailability && available !== null && (
-                      <small>{available > 0 ? `${available} lliures` : 'Ocupada'}</small>
-                    )}
+            {calendarScreen === 'sessions' && (
+              <>
+                <button className="back-link" type="button" onClick={() => setCalendarScreen('calendar')}>‹ <span>Tornar al calendari</span></button>
+                <div className="screen-heading"><span className="heading-icon">▦</span><div><p>{resource?.name ?? 'Recurs'}</p><h1>Sessions del dia</h1></div></div>
+                <h2 className="selected-date-heading">{formatDate(bookingDate)}</h2>
+                {renderSessionRows([bookingDate], (item) => {
+                  setSelectedSessionId(item.id)
+                  setCalendarScreen('detail')
+                })}
+                {availabilityError && <p className="inline-note">No s’ha pogut consultar la disponibilitat ara mateix.</p>}
+                <button className="primary-button" type="button" onClick={() => openTab('quick')}>＋ Nova reserva ràpida</button>
+              </>
+            )}
+
+            {calendarScreen === 'detail' && (
+              <>
+                <button className="back-link" type="button" onClick={() => setCalendarScreen('sessions')}>‹ <span>Tornar a les sessions</span></button>
+                <div className="screen-heading"><span className="heading-icon">▢</span><div><p>DETALL DE LA RESERVA</p><h1>Confirma les dades</h1></div></div>
+                <div className="reservation-summary">
+                  <strong>{resource?.name}</strong>
+                  <span>▦ &nbsp;{formatDate(bookingDate)}</span>
+                  <span>◷ &nbsp;{selectedSession ? `${selectedSession.number}a sessió` : ''}</span>
+                </div>
+                <form className="reservation-form" onSubmit={handleSubmit}>
+                  {renderTeacherAndQuantity()}
+                  <button className="primary-button" type="submit" disabled={isSubmitting || isLoadingAvailability || !selectedSession}>
+                    {isSubmitting ? 'Enviant…' : 'Confirmar reserva'}
                   </button>
-                )
-              })}
-            </div>
-
-            <button
-              className={`repeat-toggle${repeatWeekly ? ' active' : ''}`}
-              type="button"
-              aria-pressed={repeatWeekly}
-              onClick={() => {
-                setRepeatWeekly((value) => !value)
-                setRepeatUntil('')
-                setSelectedSessionId('')
-                setMessage('')
-              }}
-            >
-              <span className="toggle-track"><span /></span>
-              <span><strong>Repetir cada setmana</strong><small>Reserva per blocs de dates</small></span>
-            </button>
-            {repeatWeekly && bookingDates.length > 0 && (
-              <p className="block-count">Es crearan {bookingDates.length} reserves setmanals, sempre que hi haja disponibilitat.</p>
+                </form>
+                <p className="privacy-note">Sense iniciar sessió. La reserva es pot gestionar des d’aquest navegador.</p>
+              </>
             )}
 
-            <div className="form-divider" />
+            {calendarScreen === 'reservation-detail' && openReservation && (
+              <>
+                <button className="back-link" type="button" onClick={() => setCalendarScreen('calendar')}>‹ <span>Les meues reserves</span></button>
+                <div className="screen-heading"><span className="heading-icon">▢</span><div><p>DETALL DE LA RESERVA</p><h1>La teua reserva</h1></div></div>
+                <div className="reservation-summary">
+                  <strong>{openReservation.resourceName}</strong>
+                  {openReservation.dates.map((date) => <span key={date}>▦ &nbsp;{formatDate(date)}</span>)}
+                  <span>◷ &nbsp;{openReservation.sessionLabel} sessió</span>
+                  {openReservation.teacherName && <span>♙ &nbsp;{openReservation.teacherName}</span>}
+                  {openReservation.quantity > 1 && <span>Quantitat &nbsp;{openReservation.quantity}</span>}
+                </div>
+                <div className="detail-actions">
+                  <button className="danger-outline" type="button" onClick={() => setReservationToCancel(openReservation)}>⌫ &nbsp;Anul·lar reserva</button>
+                  <button className="secondary-button" type="button" onClick={() => modifyReservation(openReservation)}>✎ &nbsp;Modificar</button>
+                </div>
+              </>
+            )}
+          </section>
+        )}
 
-            <div className="card-heading compact-heading">
-              <div>
-                <span className="step-label">PAS 3 <span>·</span> DADES</span>
-                <h2>Qui fa la reserva?</h2>
-              </div>
-              <span className="heading-icon person-icon" aria-hidden="true">◎</span>
-            </div>
-
-            <div className="fields-row">
-              <label className="field-group" htmlFor="teacher-name">
-                <span className="field-label">Nom del docent</span>
-                <input
-                  id="teacher-name"
-                  className="text-input"
-                  type="text"
-                  value={teacher}
-                  onChange={(event) => setTeacher(event.target.value)}
-                  placeholder="Escriu el teu nom"
-                  autoComplete="name"
-                  maxLength={120}
-                  required
-                />
+        {(activeTab === 'quick' || activeTab === 'blocks') && (
+          <section className="screen-card">
+            <div className="screen-heading"><span className="heading-icon">{activeTab === 'quick' ? '▢' : '▣'}</span><div><p>{activeTab === 'quick' ? 'UNA RESERVA' : 'RESERVES RECURRENTS'}</p><h1>{activeTab === 'quick' ? 'Reserva ràpida' : 'Reserva per blocs'}</h1></div></div>
+            <form className="reservation-form" onSubmit={handleSubmit}>
+              {renderResourceField()}
+              <label className="field-label field-stack" htmlFor="booking-date">
+                <span>Dia de la reserva</span>
+                <input id="booking-date" type="date" min={today} value={bookingDate} onChange={(event) => setDate(event.target.value)} required />
               </label>
-              {resource && resource.capacity > 1 && (
-                <label className="field-group quantity-group" htmlFor="quantity">
-                  <span className="field-label">Quantitat (màxim {maxQuantity})</span>
+              {activeTab === 'blocks' && (
+                <label className="field-label field-stack" htmlFor="repeat-until">
+                  <span>Repetir cada setmana fins al dia</span>
                   <input
-                    id="quantity"
-                    className="text-input"
-                    type="number"
-                    min="1"
-                    max={maxQuantity}
-                    value={quantity}
-                    onChange={(event) => setQuantity(Number(event.target.value))}
+                    id="repeat-until"
+                    type="date"
+                    min={bookingDate || today}
+                    value={repeatUntil}
+                    onChange={(event) => { setRepeatUntil(event.target.value); setSelectedSessionId(''); setMessage('') }}
                     required
                   />
+                  <small>Es repetiran les mateixes sessions cada setmana, fins a 60 dates.</small>
                 </label>
               )}
-            </div>
+              <div className="section-heading"><h2>{activeTab === 'blocks' ? 'Sessió per a cada data' : 'Sessions del dia'}</h2></div>
+              {activeTab === 'blocks' && bookingDates.length > 0 && <p className="inline-note">Es crearan {bookingDates.length} reserves setmanals, sempre que hi haja disponibilitat.</p>}
+              {renderSessionRows(activeTab === 'blocks' ? bookingDates : [bookingDate], (item) => { setSelectedSessionId(item.id); setMessage('') })}
+              {renderTeacherAndQuantity()}
+              <button className="primary-button" type="submit" disabled={isSubmitting || isLoading || isLoadingAvailability || !selectedSession}>
+                {isSubmitting ? 'Enviant…' : activeTab === 'blocks' ? 'Confirmar reserves' : 'Nova reserva'}
+              </button>
+            </form>
+          </section>
+        )}
 
-            <button className="submit-button" type="submit" disabled={isLoading || isSubmitting || !resource || !selectedSession}>
-              {isSubmitting ? 'Enviant…' : 'Confirmar reserva'} <span aria-hidden="true">↗</span>
-            </button>
-            {message && <p className="form-message" role="status">{message}</p>}
-            <p className="form-footnote">Accés directe des de l’enllaç o el QR, sense iniciar sessió.</p>
-          </form>
-
-          <aside className="summary-column" aria-label="Resum de la reserva">
-            <div className="summary-card">
-              <div className="summary-topline">
-                <span>EL TEU RESUM</span>
-                <span className="summary-spark" aria-hidden="true">✳</span>
-              </div>
-              <p className="summary-date">{formatDate(bookingDate)}</p>
-              <div className="summary-resource">
-                <span className="summary-resource-icon" aria-hidden="true">{resource?.icon ?? '◇'}</span>
-                <div><small>RECURS</small><strong>{resource?.name ?? 'Tria un recurs'}</strong></div>
-              </div>
-              <div className="summary-detail">
-                <span>Sessió</span><strong>{selectedSession ? `${selectedSession.label} sessió` : 'Pendent de triar'}</strong>
-              </div>
-              {resource && resource.capacity > 1 && <div className="summary-detail"><span>Unitats</span><strong>{quantity} de {resource.capacity}</strong></div>}
-              {repeatWeekly && <div className="repeat-note">Reserva setmanal · {bookingDates.length || 'tria el període'} dates</div>}
-              <div className="summary-bottom">
-                <span className="summary-check" aria-hidden="true">✓</span>
-                <span>Compartir recursos<br />ajuda a tot el centre.</span>
-              </div>
-            </div>
-
-            <div className="support-card">
-              <span className="support-icon" aria-hidden="true">✳</span>
-              <div><strong>Necessites ajuda?</strong><p>Consulta amb l’equip de coordinació del centre.</p></div>
-              <span className="support-arrow" aria-hidden="true">↗</span>
-            </div>
-
-            <div className="my-reservations-card">
-              <div className="my-reservations-heading">
-                <div><span className="step-label">EN AQUEST NAVEGADOR</span><h2>Les meues reserves</h2></div>
-                <span className="reservation-count">{savedReservations.length}</span>
-              </div>
-              {savedReservations.length === 0 ? (
-                <p className="empty-reservations">Ací apareixeran les reserves fetes des d’aquest navegador.</p>
-              ) : (
-                <ul className="reservation-list">
-                  {savedReservations.map((item) => (
-                    <li className="reservation-item" key={item.groupId}>
-                      <div className="reservation-item-top">
-                        <strong>{item.resourceName}</strong>
-                        <button type="button" onClick={() => void cancelReservation(item)}>Cancel·lar</button>
-                      </div>
-                      <span>{item.sessionLabel} sessió · {item.quantity} unitats</span>
-                      <small>{item.dates.map(formatShortDate).join(', ')}</small>
-                    </li>
-                  ))}
-                </ul>
-              )}
-            </div>
-          </aside>
-        </div>
+        <aside className="help-card">
+          <span className="help-icon" aria-hidden="true">i</span>
+          <span><strong>Necessites ajuda?</strong><small>Consulta amb l’equip de coordinació del centre.</small></span>
+          <span className="row-chevron" aria-hidden="true">›</span>
+        </aside>
       </main>
 
-      <footer className="footer">
-        <span>CEIP BONAVISTA</span>
-        <span>Una eina per a compartir millor</span>
-      </footer>
+      <footer className="footer"><span>CEIP BONAVISTA</span><span>Una eina per a compartir millor</span></footer>
+
+      {reservationToCancel && (
+        <div className="modal-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) setReservationToCancel(null) }}>
+          <section className="confirm-dialog" role="dialog" aria-modal="true" aria-labelledby="cancel-title">
+            <span className="trash-icon" aria-hidden="true">⌫</span>
+            <h2 id="cancel-title">Segur que vols anul·lar aquesta reserva?</h2>
+            <p>La sessió tornarà a estar disponible per a la resta del professorat.</p>
+            <button className="confirm-danger" type="button" onClick={() => void cancelReservation(reservationToCancel)}>Sí, anul·lar</button>
+            <button className="secondary-button" type="button" onClick={() => setReservationToCancel(null)}>No, tornar</button>
+          </section>
+        </div>
+      )}
     </div>
   )
 }
